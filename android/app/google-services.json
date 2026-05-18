@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "375365139486",
+    "project_id": "eyematchy-47c0b",
+    "storage_bucket": "eyematchy-47c0b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:375365139486:android:ee26b9cf7845eaa58b020f",
+        "android_client_info": {
+          "package_name": "com.nnexxe.eyematchy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "375365139486-2gta7mp34ujkd46jdcu3vddqdtm6jblm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nnexxe.eyematchy",
+            "certificate_hash": "6ad837796c30a868ed81e57a9391d845c61dce7a"
+          }
+        },
+        {
+          "client_id": "375365139486-mqp25j8ud1iiml2b4c01fhuvcua7h2f7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCeKayJcrNUWbv-Y7e8PN_n22o12Dcmorc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "375365139486-mqp25j8ud1iiml2b4c01fhuvcua7h2f7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
