@@ -13,6 +13,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   @override
   void dispose() {
@@ -28,10 +30,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         content: Text(message),
         behavior: SnackBarBehavior.floating,
         margin: EdgeInsets.only(
-          top: 20,
+          top: 60,
           left: 24,
           right: 24,
-          bottom: MediaQuery.of(context).size.height - 100,
+          bottom: MediaQuery.of(context).size.height - 140,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -126,20 +128,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _passwordController,
-                    obscureText: true,
+                    obscureText: !_isPasswordVisible,
                     decoration: InputDecoration(
                       labelText: 'Hasło',
                       prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isPasswordVisible ? Icons.key_off : Icons.key,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isPasswordVisible = !_isPasswordVisible;
+                          });
+                        },
+                      ),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _confirmPasswordController,
-                    obscureText: true,
+                    obscureText: !_isConfirmPasswordVisible,
                     decoration: InputDecoration(
                       labelText: 'Powtórz hasło',
                       prefixIcon: const Icon(Icons.lock_clock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isConfirmPasswordVisible ? Icons.key_off : Icons.key,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                          });
+                        },
+                      ),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
