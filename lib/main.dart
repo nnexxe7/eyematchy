@@ -5,9 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/setup_profile_screen.dart';
+import 'package:eyematchy/screens/setup_profile_screen.dart';
 import 'screens/salon_home_screen.dart';
-import 'screens/invitations_screen.dart'; // Import nowego ekranu zaproszeń
+import 'screens/invitations_screen.dart';
+import 'screens/salon_settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +76,7 @@ class AuthGate extends StatelessWidget {
                     return HomeScreen(userData: data);
                   }
                 }
-                return const SetupProfileScreen();
+                return SetupProfileScreen();
               },
             );
           }
@@ -119,6 +120,8 @@ class AppDrawer extends StatelessWidget {
             accountName: Text('${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'),
             accountEmail: Text(userData['email'] ?? ''),
           ),
+
+          // --- PRZEŁĄCZANIE RÓL ---
           if (hasBothRoles) ...[
             if (currentRole == 'salon')
               ListTile(
@@ -151,6 +154,23 @@ class AppDrawer extends StatelessWidget {
               ),
             const Divider(),
           ],
+          if (currentRole == 'salon' && userData['salonRole'] == 'owner') ...[
+            ListTile(
+              leading: const Icon(Icons.settings_outlined, color: Colors.deepPurple),
+              title: const Text('Ustawienia Salonu'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SalonSettingsScreen(userData: userData),
+                  ),
+                );
+              },
+            ),
+            const Divider(),
+          ],
+
           const Spacer(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),

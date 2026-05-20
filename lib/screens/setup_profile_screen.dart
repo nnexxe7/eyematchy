@@ -10,9 +10,11 @@ class SetupProfileScreen extends StatefulWidget {
 }
 
 class _SetupProfileScreenState extends State<SetupProfileScreen> {
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+
   String _selectedRole = 'client';
   bool _isLoading = false;
 
@@ -28,40 +30,39 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
+        backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-          top: 60,
-          left: 24,
-          right: 24,
-          bottom: MediaQuery.of(context).size.height - 140,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
-  Future<void> _saveProfile() async {
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
-    final phone = _phoneController.text.trim();
+  // --- FUNKCJA FORMATUJĄCA (Zawsze pierwsza litera duża, reszta małe) ---
+  String _capitalize(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed[0].toUpperCase() + trimmed.substring(1).toLowerCase();
+  }
 
-    if (firstName.isEmpty || lastName.isEmpty || phone.isEmpty) {
-      _showTopSnackBar('Wypełnij wszystkie pola!');
-      return;
-    }
+  // --- LOGIKA ZAPISU DO BAZY ---
+  Future<void> _saveProfileData() async {
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;
     });
 
+    final firstName = _firstNameController.text;
+    final lastName = _lastNameController.text;
+    final phone = _phoneController.text;
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'firstName': firstName,
-          'lastName': lastName,
-          'phone': phone,
-          'email': user.email,
+          'firstName': _capitalize(firstName), // <--- Tutaj używamy naszej funkcji
+          'lastName': _capitalize(lastName),   // <--- Tutaj też
+          'phone': phone.trim(),
+          'email': user.email?.toLowerCase().trim(), // Maile zawsze z małych
           'roles': _selectedRole == 'salon' ? ['client', 'salon'] : ['client'],
           'currentView': _selectedRole,
           'createdAt': FieldValue.serverTimestamp(),
@@ -79,132 +80,115 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
     }
   }
 
-  Widget _buildRoleCard(String role, String title, IconData icon) {
-    bool isSelected = _selectedRole == role;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedRole = role;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.deepPurple.withOpacity(0.05) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? Colors.deepPurple : Colors.grey.shade300,
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 40,
-                color: isSelected ? Colors.deepPurple : Colors.grey.shade400,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.deepPurple : Colors.black54,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
+      appBar: AppBar(
+        title: const Text('Uzupełnij swój profil'),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Cześć! Kim jesteś?',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                  'Witaj w EyeMatch!',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Wybierz swoją rolę w EyeMatchy',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  'Podaj swoje podstawowe dane, aby móc korzystać z aplikacji.',
+                  style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 32),
-                Row(
-                  children: [
-                    _buildRoleCard('client', 'Klientką', Icons.person_outline),
-                    const SizedBox(width: 16),
-                    _buildRoleCard('salon', 'Stylistką', Icons.content_cut_outlined),
-                  ],
-                ),
-                const SizedBox(height: 40),
-                TextField(
+
+                // POLE IMIĘ
+                TextFormField(
                   controller: _firstNameController,
                   decoration: InputDecoration(
                     labelText: 'Imię',
-                    prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Wpisz imię' : null,
                 ),
                 const SizedBox(height: 16),
-                TextField(
+
+                // POLE NAZWISKO
+                TextFormField(
                   controller: _lastNameController,
                   decoration: InputDecoration(
                     labelText: 'Nazwisko',
-                    prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Wpisz nazwisko' : null,
                 ),
                 const SizedBox(height: 16),
-                TextField(
+
+                // POLE TELEFON
+                TextFormField(
                   controller: _phoneController,
+                  keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
                     labelText: 'Numer telefonu',
-                    prefixIcon: const Icon(Icons.phone_outlined),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  keyboardType: TextInputType.phone,
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Wpisz numer telefonu' : null,
                 ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 24),
+
+                // WYBÓR ROLI
+                const Text(
+                  'Kim jesteś?',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Klientką')),
+                        selected: _selectedRole == 'client',
+                        selectedColor: Colors.deepPurple.withOpacity(0.2),
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedRole = 'client');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Stylistką')),
+                        selected: _selectedRole == 'salon',
+                        selectedColor: Colors.deepPurple.withOpacity(0.2),
+                        onSelected: (selected) {
+                          if (selected) setState(() => _selectedRole = 'salon');
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 40),
+
+                // PRZYCISK ZAPISZ
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _saveProfileData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text('Zapisz i przejdź dalej', style: TextStyle(fontSize: 16)),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                      : const Text('Zapisz profil', style: TextStyle(fontSize: 16)),
                 ),
               ],
             ),

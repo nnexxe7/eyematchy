@@ -13,8 +13,7 @@ class InvitationsScreen extends StatefulWidget {
 class _InvitationsScreenState extends State<InvitationsScreen> {
   bool _isProcessing = false;
 
-  // Funkcja akceptacji zaproszenia - KLUCZOWA LOGIKA AWANSU BIZNESOWEGO
-  Future<void> _acceptInvitation(String docId, String salonId) async {
+  Future<void> _acceptInvitation(String docId, String salonId, String salonName) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -24,15 +23,14 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
 
       await FirebaseFirestore.instance.runTransaction((transaction) async {
-        // 1. Aktualizujemy profil użytkownika: dostaje rolę salon, salonId i przełączamy mu widok
         transaction.update(userRef, {
-          'roles': FieldValue.arrayUnion(['salon']), // Dostaje uprawnienia stylistki!
-          'salonId': salonId,                       // Łączymy z salonem szefowej
-          'employeeRole': 'employee',               // Oznaczenie jako pracownik zespołu
-          'currentView': 'salon',                   // Od razu przerzucamy na panel pracy
+          'roles': FieldValue.arrayUnion(['salon']),
+          'salonId': salonId,
+          'salonName': salonName,
+          'salonRole': 'employee',
+          'currentView': 'salon',
         });
 
-        // 2. Zmieniamy status zaproszenia na accepted
         final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(docId);
         transaction.update(inviteRef, {'status': 'accepted'});
       });
@@ -41,7 +39,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Zaproszenie zaakceptowane! Witaj w zespole!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context); // Wraca i AuthGate automatycznie przełączy ekran na panel szefowej/stylistki
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -54,7 +52,6 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     }
   }
 
-  // Funkcja odrzucenia zaproszenia
   Future<void> _declineInvitation(String docId) async {
     try {
       await FirebaseFirestore.instance.collection('invitations').doc(docId).update({
@@ -87,7 +84,6 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       body: _isProcessing
           ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
           : StreamBuilder<QuerySnapshot>(
-        // Realtime nasłuchiwanie zaproszeń wysłanych na maila tej konkretnej klientki
         stream: FirebaseFirestore.instance
             .collection('invitations')
             .where('email', isEqualTo: myEmail.toLowerCase())
@@ -142,60 +138,60 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                Row(
-                children: [
-                const CircleAvatar(
-                    backgroundColor: Colors.purple,
-                    child: Icon(Icons.business, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-              child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-              Text(
-              salonName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const Text('Zaproszenie do zespołu (Stylistka)', style: TextStyle(color: Colors.grey, fontSize: 13)),
-              ],
-              ),
-              ),
-              ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-              children: [
-              Expanded(
-              child: OutlinedButton(
-              onPressed: () => _declineInvitation(docId),
-              style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.redAccent,
-              side: const BorderSide(color: Colors.redAccent),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text('Odrzuć'),
-              ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-              child: ElevatedButton(
-              onPressed: () => _acceptInvitation(docId, salonId),
-              style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text('Akceptuj'),
-              ),
-              ),
-              ],
-              )
-              ],
-              ),
-              ),
+                      Row(
+                        children: [
+                          const CircleAvatar(
+                            backgroundColor: Colors.purple,
+                            child: Icon(Icons.business, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  salonName,
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                ),
+                                const Text('Zaproszenie do zespołu (Stylistka)', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => _declineInvitation(docId),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                                side: const BorderSide(color: Colors.redAccent),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text('Odrzuć'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => _acceptInvitation(docId, salonId, salonName),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text('Akceptuj'),
+                            ),
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+                ),
               );
             },
           );
