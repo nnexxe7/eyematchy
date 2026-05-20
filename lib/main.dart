@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // POPRAWIONY IMPORT
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/setup_profile_screen.dart';
+import 'screens/salon_home_screen.dart';
+import 'screens/invitations_screen.dart'; // Import nowego ekranu zaproszeń
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,12 +90,12 @@ class AppDrawer extends StatelessWidget {
   final Map<String, dynamic> userData;
   final String currentRole;
 
-  const AppDrawer({super.key, required final this.userData, required final this.currentRole});
+  const AppDrawer({super.key, required this.userData, required this.currentRole});
 
   Future<void> _toggleView(BuildContext context, String targetView) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      Navigator.pop(context);
+      Navigator.pop(context); // Zamyka menu boczne przed przełączeniem widoku
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'currentView': targetView,
       });
@@ -109,7 +111,7 @@ class AppDrawer extends StatelessWidget {
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            decoration: const BoxDecoration(color: Colors.deepPurple), // POPRAWIONE TŁO
+            decoration: const BoxDecoration(color: Colors.deepPurple),
             currentAccountPicture: const CircleAvatar(
               backgroundColor: Colors.white,
               child: Icon(Icons.person, size: 40, color: Colors.deepPurple),
@@ -131,6 +133,23 @@ class AppDrawer extends StatelessWidget {
                 onTap: () => _toggleView(context, 'salon'),
               ),
             const Divider(),
+          ] else ...[
+            // Sekcja widoczna tylko dla osób będących wyłącznie klientkami
+            if (currentRole == 'client')
+              ListTile(
+                leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
+                title: const Text('Zaproszenia do pracy'),
+                onTap: () {
+                  Navigator.pop(context); // Zamyka Drawer
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => InvitationsScreen(userData: userData),
+                    ),
+                  );
+                },
+              ),
+            const Divider(),
           ],
           const Spacer(),
           ListTile(
@@ -143,45 +162,6 @@ class AppDrawer extends StatelessWidget {
           ),
           const SizedBox(height: 20),
         ],
-      ),
-    );
-  }
-}
-
-class SalonHomeScreen extends StatelessWidget {
-  final Map<String, dynamic> userData;
-  const SalonHomeScreen({super.key, required final this.userData});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Panel Stylistki'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-      ),
-      drawer: AppDrawer(userData: userData, currentRole: 'salon'),
-      body: const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.calendar_month_outlined, size: 80, color: Colors.deepPurple),
-              SizedBox(height: 24),
-              Text(
-                'Witaj w panelu salonu!',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Użyj menu bocznego, aby zmienić profil.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
