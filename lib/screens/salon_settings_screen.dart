@@ -149,13 +149,13 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Zwolnij pracownika'),
-        content: Text('Czy na pewno chcesz usunąć stylistkę $employeeName z zespołu? Straci ona całkowicie uprawnienia biznesowe w aplikacji.'),
+        title: const Text('Usuń z zespołu'),
+        content: Text('Czy na pewno chcesz usunąć użytkownika $employeeName z zespołu? Straci on uprawnienia oraz wszystkie powiązane zaproszenia.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Zwolnij', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+              child: const Text('Usuń', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
           ),
         ],
       ),
@@ -164,33 +164,69 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     if (!confirm) return;
 
     try {
+      // 1. Pobieramy dane użytkownika, aby poznać jego e-mail (przydatne do czyszczenia zaproszeń)
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(employeeId).get();
+      String employeeEmail = '';
+      if (userDoc.exists && userDoc.data() != null) {
+        employeeEmail = userDoc.data()!['email'] ?? '';
+      }
+
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
+      // 2. Odpinamy salon od użytkownika i degradujemy rolę
       final userRef = FirebaseFirestore.instance.collection('users').doc(employeeId);
       batch.update(userRef, {
         'salonId': FieldValue.delete(),
         'salonName': FieldValue.delete(),
         'salonRole': FieldValue.delete(),
+        'employeeRole': FieldValue.delete(),
         'roles': ['client'],
         'currentView': 'client',
       });
 
+      // 3. Usuwamy użytkownika z tablicy employees w salonie
       final salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
       batch.update(salonRef, {
         'employees': FieldValue.arrayRemove([employeeId])
       });
 
+      // 4. NOWOŚĆ: Szukamy i kasujemy rekordy w kolekcji 'invitations'
+      // Sprawdzamy zaproszenia wysłane do tej konkretnej osoby z tego konkretnego salonu
+      if (employeeEmail.isNotEmpty) {
+        final inviteSnapshotByEmail = await FirebaseFirestore.instance
+            .collection('invitations')
+            .where('salonId', isEqualTo: salonId)
+            .where('email', isEqualTo: employeeEmail)
+            .get();
+
+        for (var doc in inviteSnapshotByEmail.docs) {
+          batch.delete(doc.reference);
+        }
+      }
+
+      // Na wypadek, gdyby zaproszenie było powiązane bezpośrednio przez pole employeeId (zależnie od Twojej struktury)
+      final inviteSnapshotById = await FirebaseFirestore.instance
+          .collection('invitations')
+          .where('salonId', isEqualTo: salonId)
+          .where('employeeId', isEqualTo: employeeId)
+          .get();
+
+      for (var doc in inviteSnapshotById.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Wykonujemy całą operację czyszczenia (modyfikacja usera + usunięcie z salonu + kasowanie zaproszeń)
       await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Pracownik $employeeName został usunięty z zespołu.'), backgroundColor: Colors.black87),
+          SnackBar(content: Text('Użytkownik $employeeName został usunięty, a jego zaproszenia skasowane.'), backgroundColor: Colors.black87),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd podczas zwalniania: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Błąd podczas usuwania: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }

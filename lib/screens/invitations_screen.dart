@@ -21,19 +21,31 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
 
     try {
       final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
+      final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(docId);
 
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        transaction.update(userRef, {
-          'roles': FieldValue.arrayUnion(['salon']),
-          'salonId': salonId,
-          'salonName': salonName,
-          'salonRole': 'employee',
-          'currentView': 'salon',
-        });
+      WriteBatch batch = FirebaseFirestore.instance.batch();
 
-        final inviteRef = FirebaseFirestore.instance.collection('invitations').doc(docId);
-        transaction.update(inviteRef, {'status': 'accepted'});
+      // 1. Aktualizacja profilu pracownika w kolekcji 'users'
+      batch.update(userRef, {
+        'roles': FieldValue.arrayUnion(['salon']),
+        'salonId': salonId,
+        'salonName': salonName,
+        'salonRole': 'employee',
+        'currentView': 'salon',
       });
+
+      // 2. Dodanie czystego UID (jako String) do tablicy employees w dokumencie salonu
+      batch.update(salonRef, {
+        'employees': FieldValue.arrayUnion([user.uid])
+      });
+
+      // 3. Zmiana statusu zaproszenia na zaakceptowane
+      batch.update(inviteRef, {
+        'status': 'accepted'
+      });
+
+      await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -109,7 +121,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Gdy właścicielka salonu wyśle zaproszenie na Twój e-mail, pojawi się ono w tym miejscu.',
+                      'Gdy właścicielka salonu wyświatli zaproszenie na Twój e-mail, pojawi się ono w tym miejscu.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey),
                     ),
