@@ -12,6 +12,7 @@ class SalonHomeScreen extends StatefulWidget {
 }
 
 class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProviderStateMixin {
+  String? _selectedCityId;
   late TabController _tabController;
   DateTime _selectedDate = DateTime.now();
   final TextEditingController _emailController = TextEditingController();
@@ -58,12 +59,19 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     final name = _salonNameController.text.trim();
     final street = _salonStreetController.text.trim();
     final number = _salonNumberController.text.trim();
-    final city = _salonCityController.text.trim();
 
-    if (name.isEmpty || street.isEmpty || number.isEmpty || city.isEmpty) {
+    // 1. Walidacja: Sprawdzamy czy podstawowe pola tekstowe są wypełnione
+    if (name.isEmpty || street.isEmpty || number.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wypełnij wszystkie pola adresu!'),
-            backgroundColor: Colors.redAccent),
+        const SnackBar(content: Text('Wypełnij nazwę oraz pola ulicy i numeru!'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // 2. Walidacja: Sprawdzamy czy wybrano miasto z listy Dropdown
+    if (_selectedCityId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Proszę wybrać miasto z listy!'), backgroundColor: Colors.redAccent),
       );
       return;
     }
@@ -71,30 +79,36 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     setState(() => _isCreating = true);
     final user = FirebaseAuth.instance.currentUser;
 
-    final String fullAddress = "ul. $street $number, $city";
-
     try {
+      // 3. Pobieramy dokument wybranego miasta, aby uzyskać jego oficjalną, ładną nazwę (np. "Kraków")
+      final cityDoc = await FirebaseFirestore.instance.collection('cities').doc(_selectedCityId).get();
+      final String cityName = (cityDoc.data() as Map<String, dynamic>?)?['name'] ?? _selectedCityId!;
+
+      final String fullAddress = "ul. $street $number, $cityName";
+
       final salonRef = FirebaseFirestore.instance.collection('salons').doc();
       final String generatedSalonId = salonRef.id;
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
+      // 4. Zapisujemy zaktualizowaną strukturę salonu
       batch.set(salonRef, {
         'salonId': generatedSalonId,
         'salonName': name,
         'address': fullAddress,
+        'cityId': _selectedCityId, // Indentyfikator pomocny przy filtrowaniu (np. 'warszawa')
         'addressDetails': {
           'street': street,
           'number': number,
-          'city': city,
+          'city': cityName, // Ładna nazwa miasta (np. 'Warszawa')
         },
         'ownerId': user!.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'employees': [user.uid],
       });
 
-      final userRef = FirebaseFirestore.instance.collection('users').doc(
-          user.uid);
+      // 5. Aktualizacja użytkownika (właściciela)
+      final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       batch.update(userRef, {
         'salonId': generatedSalonId,
         'salonName': name,
@@ -105,15 +119,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Salon został utworzony!'),
-              backgroundColor: Colors.green),
+          const SnackBar(content: Text('Salon został utworzony!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Błąd: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -328,14 +340,47 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
             ),
             const SizedBox(height: 16),
 
-            TextField(
-                controller: _salonCityController,
-                decoration: InputDecoration(labelText: 'Miasto',
-                    prefixIcon: const Icon(
-                        Icons.location_city_outlined, color: Colors.deepPurple),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15)))
+            // --- NOWY DYNAMICZNY DROPDOWN MIAST Z FIRESTORE ---
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                }
+
+                List<DropdownMenuItem<String>> cityItems = [];
+                if (snapshot.hasData) {
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    cityItems.add(
+                      DropdownMenuItem(
+                        value: doc.id, // ID dokumentu np. 'warszawa'
+                        child: Text(data['name'] ?? doc.id), // Ładna nazwa np. 'Warszawa'
+                      ),
+                    );
+                  }
+                }
+
+                return DropdownButtonFormField<String>(
+                  value: _selectedCityId,
+                  items: cityItems,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCityId = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Wybierz Miasto',
+                    prefixIcon: const Icon(Icons.location_city_outlined, color: Colors.deepPurple),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  hint: const Text('Wybierz miasto z listy'),
+                  validator: (value) => value == null ? 'To pole jest wymagane' : null,
+                );
+              },
             ),
+            // --------------------------------------------------
+
             const SizedBox(height: 16),
 
             Row(

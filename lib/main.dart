@@ -9,6 +9,8 @@ import 'package:eyematchy/screens/setup_profile_screen.dart';
 import 'screens/salon_home_screen.dart';
 import 'screens/invitations_screen.dart';
 import 'screens/salon_settings_screen.dart';
+import 'screens/client_home_screen.dart';
+import 'package:eyematchy/screens/client_home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,7 +75,7 @@ class AuthGate extends StatelessWidget {
                     if (data['currentView'] == 'salon') {
                       return SalonHomeScreen(userData: data);
                     }
-                    return HomeScreen(userData: data);
+                    return ClientHomeScreen(userData: data);
                   }
                 }
                 return SetupProfileScreen();
