@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
+import 'booking_services_screen.dart';
 
 class ClientHomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -25,7 +26,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     }
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
       builder: (context, snapshot) {
         Map<String, dynamic> liveUserData = widget.userData;
 
@@ -49,21 +53,30 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               children: [
                 Text(
                   'Witaj, $firstName! 👋',
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
                 // --- DROPDOWN WYBORU MIASTA NA SAMEJ GÓRZE ---
                 const Text(
                   'Najpierw wybierz swoje miasto:',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87),
+                  style: TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87),
                 ),
                 const SizedBox(height: 8),
                 StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
+                  stream: FirebaseFirestore.instance
+                      .collection('cities')
+                      .orderBy('name')
+                      .snapshots(),
                   builder: (context, citiesSnapshot) {
-                    if (citiesSnapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: LinearProgressIndicator(color: Colors.pinkAccent));
+                    if (citiesSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(
+                          child: LinearProgressIndicator(color: Colors
+                              .pinkAccent));
                     }
 
                     List<DropdownMenuItem<String>> cityItems = [];
@@ -73,7 +86,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         cityItems.add(
                           DropdownMenuItem(
                             value: doc.id, // ID dokumentu np. 'warszawa'
-                            child: Text(data['name'] ?? doc.id), // Ładna nazwa np. 'Warszawa'
+                            child: Text(data['name'] ??
+                                doc.id), // Ładna nazwa np. 'Warszawa'
                           ),
                         );
                       }
@@ -84,12 +98,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       items: cityItems,
                       onChanged: (value) {
                         setState(() {
-                          _selectedCityId = value; // Aktualizacja wybranego miasta i przebudowa widoku
+                          _selectedCityId =
+                              value; // Aktualizacja wybranego miasta i przebudowa widoku
                         });
                       },
                       decoration: InputDecoration(
                         hintText: 'Wybierz miasto z listy...',
-                        prefixIcon: const Icon(Icons.location_city, color: Colors.pinkAccent),
+                        prefixIcon: const Icon(Icons.location_city,
+                            color: Colors.pinkAccent),
                         filled: true,
                         fillColor: Colors.grey[50],
                         border: OutlineInputBorder(
@@ -98,7 +114,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: Colors.pinkAccent, width: 2),
+                          borderSide: const BorderSide(
+                              color: Colors.pinkAccent, width: 2),
                         ),
                       ),
                     );
@@ -109,7 +126,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                 const SizedBox(height: 24),
                 const Text(
                   'Dostępne salony:',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: TextStyle(fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87),
                 ),
                 const SizedBox(height: 12),
 
@@ -120,12 +139,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.maps_home_work_outlined, size: 64, color: Colors.grey[400]),
+                        Icon(Icons.maps_home_work_outlined, size: 64,
+                            color: Colors.grey[400]),
                         const SizedBox(height: 12),
                         Text(
                           'Wskaż miasto powyżej,\naby wyświetlić dostępne salony.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey[600], fontSize: 15),
+                          style: TextStyle(
+                              color: Colors.grey[600], fontSize: 15),
                         ),
                       ],
                     ),
@@ -137,15 +158,19 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         .where('cityId', isEqualTo: _selectedCityId)
                         .snapshots(),
                     builder: (context, salonsSnapshot) {
-                      if (salonsSnapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+                      if (salonsSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator(
+                            color: Colors.pinkAccent));
                       }
 
-                      if (!salonsSnapshot.hasData || salonsSnapshot.data!.docs.isEmpty) {
+                      if (!salonsSnapshot.hasData ||
+                          salonsSnapshot.data!.docs.isEmpty) {
                         return Center(
                           child: Text(
                             'Brak zarejestrowanych salonów w tym mieście.',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 15),
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 15),
                           ),
                         );
                       }
@@ -158,13 +183,17 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           final String salonId = doc.id;
 
                           // Bezpieczne wyciąganie nazwy salonu z bazy danych
-                          final String name = salon['salonName'] ?? salon['name'] ?? 'Nieznany Salon';
-                          final String address = salon['address'] ?? 'Brak adresu';
-                          final List<dynamic> employees = salon['employees'] ?? [];
+                          final String name = salon['salonName'] ??
+                              salon['name'] ?? 'Nieznany Salon';
+                          final String address = salon['address'] ??
+                              'Brak adresu';
+                          final List<dynamic> employees = salon['employees'] ??
+                              [];
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
                             elevation: 2,
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
@@ -174,28 +203,37 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: Colors.pink.withOpacity(0.1),
-                                        child: const Icon(Icons.content_cut, color: Colors.pinkAccent),
+                                        backgroundColor: Colors.pink
+                                            .withOpacity(0.1),
+                                        child: const Icon(Icons.content_cut,
+                                            color: Colors.pinkAccent),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment: CrossAxisAlignment
+                                              .start,
                                           children: [
                                             Text(
                                               name,
-                                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                              style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold),
                                             ),
                                             const SizedBox(height: 4),
                                             Row(
                                               children: [
-                                                const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                                                const Icon(
+                                                    Icons.location_on, size: 14,
+                                                    color: Colors.grey),
                                                 const SizedBox(width: 4),
                                                 Expanded(
                                                   child: Text(
                                                     address,
-                                                    style: const TextStyle(color: Colors.grey),
-                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                        color: Colors.grey),
+                                                    overflow: TextOverflow
+                                                        .ellipsis,
                                                   ),
                                                 ),
                                               ],
@@ -207,11 +245,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   ),
                                   const Divider(height: 24),
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment: MainAxisAlignment
+                                        .spaceBetween,
                                     children: [
                                       Text(
                                         'Zespół: ${employees.length} os.',
-                                        style: const TextStyle(color: Colors.black54, fontSize: 13),
+                                        style: const TextStyle(
+                                            color: Colors.black54,
+                                            fontSize: 13),
                                       ),
                                       ElevatedButton(
                                         onPressed: () {
@@ -220,7 +261,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.pinkAccent,
                                           foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius
+                                                  .circular(12)),
                                         ),
                                         child: const Text('Zarezerwuj'),
                                       ),
@@ -244,8 +287,15 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   }
 
   void _startBookingWizard(String salonId, String salonName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Rozpoczynam rezerwację w: $salonName')),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            BookingServicesScreen(
+              salonId: salonId,
+              salonName: salonName,
+            ),
+      ),
     );
   }
 }
