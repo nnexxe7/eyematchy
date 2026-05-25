@@ -11,6 +11,7 @@ import 'screens/invitations_screen.dart';
 import 'screens/salon_settings_screen.dart';
 import 'screens/client_home_screen.dart';
 import 'package:eyematchy/screens/client_home_screen.dart';
+import 'screens/profile_settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -172,6 +173,21 @@ class AppDrawer extends StatelessWidget {
             ),
             const Divider(),
           ],
+
+          ListTile(
+            leading: const Icon(Icons.manage_accounts_outlined, color: Colors.black87),
+            title: const Text('Ustawienia profilu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+            onTap: () {
+              Navigator.pop(context); // Zamyka szufladę bocznego menu
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileSettingsScreen(userData: userData),
+                ),
+              );
+            },
+          ),
+          const Divider(height: 1), // Linia oddzielająca sekcje
 
           const Spacer(),
           ListTile(
