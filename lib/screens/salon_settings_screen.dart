@@ -15,9 +15,11 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
   late TabController _tabController;
 
   late TextEditingController _nameController;
-  late TextEditingController _cityController;
   late TextEditingController _streetController;
   late TextEditingController _numberController;
+
+  // NOWOŚĆ: Przechowujemy ID wybranego miasta zamiast czystego tekstu w kontrolerze
+  String? _selectedCityId;
 
   bool _isLoading = false;
   bool _isInitialDataLoaded = false;
@@ -27,7 +29,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _nameController = TextEditingController();
-    _cityController = TextEditingController();
     _streetController = TextEditingController();
     _numberController = TextEditingController();
     _loadCurrentSalonData();
@@ -37,7 +38,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
   void dispose() {
     _tabController.dispose();
     _nameController.dispose();
-    _cityController.dispose();
     _streetController.dispose();
     _numberController.dispose();
     super.dispose();
@@ -55,9 +55,13 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
         setState(() {
           _nameController.text = data['salonName'] ?? '';
-          _cityController.text = addressDetails['city'] ?? '';
           _streetController.text = addressDetails['street'] ?? '';
           _numberController.text = addressDetails['number'] ?? '';
+
+          // Pobieramy cityId zapisany w dokumencie salonu.
+          // Jeśli go nie ma (stary dokument), próbujemy dopasować na podstawie nazwy miasta
+          _selectedCityId = data['cityId'] ?? (addressDetails['city'] as String?)?.toLowerCase().replaceAll(' ', '-');
+
           _isInitialDataLoaded = true;
         });
       }
@@ -70,6 +74,12 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
   Future<void> _updateSalonData() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCityId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Proszę wybrać miasto z listy!'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -96,11 +106,14 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
         throw 'Twój profil nie jest przypisany do żadnego salonu (brak salonId).';
       }
 
+      // Pobieramy oficjalną, ładną nazwę miasta z dokumentu w kolekcji 'cities'
+      final cityDoc = await FirebaseFirestore.instance.collection('cities').doc(_selectedCityId).get();
+      final String cityName = (cityDoc.data() as Map<String, dynamic>?)?['name'] ?? _selectedCityId!;
+
       final name = _nameController.text.trim();
-      final city = _cityController.text.trim();
       final street = _streetController.text.trim();
       final number = _numberController.text.trim();
-      final fullAddress = "ul. $street $number, $city";
+      final fullAddress = "ul. $street $number, $cityName";
 
       final usersSnapshot = await FirebaseFirestore.instance
           .collection('users')
@@ -113,8 +126,9 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       batch.update(salonRef, {
         'salonName': name,
         'address': fullAddress,
+        'cityId': _selectedCityId, // Nadpisujemy poprawne cityId dla klienta
         'addressDetails': {
-          'city': city,
+          'city': cityName,
           'street': street,
           'number': number,
         }
@@ -164,7 +178,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     if (!confirm) return;
 
     try {
-      // 1. Pobieramy dane użytkownika, aby poznać jego e-mail (przydatne do czyszczenia zaproszeń)
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(employeeId).get();
       String employeeEmail = '';
       if (userDoc.exists && userDoc.data() != null) {
@@ -173,7 +186,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
-      // 2. Odpinamy salon od użytkownika i degradujemy rolę
       final userRef = FirebaseFirestore.instance.collection('users').doc(employeeId);
       batch.update(userRef, {
         'salonId': FieldValue.delete(),
@@ -184,14 +196,11 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
         'currentView': 'client',
       });
 
-      // 3. Usuwamy użytkownika z tablicy employees w salonie
       final salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
       batch.update(salonRef, {
         'employees': FieldValue.arrayRemove([employeeId])
       });
 
-      // 4. NOWOŚĆ: Szukamy i kasujemy rekordy w kolekcji 'invitations'
-      // Sprawdzamy zaproszenia wysłane do tej konkretnej osoby z tego konkretnego salonu
       if (employeeEmail.isNotEmpty) {
         final inviteSnapshotByEmail = await FirebaseFirestore.instance
             .collection('invitations')
@@ -204,7 +213,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
         }
       }
 
-      // Na wypadek, gdyby zaproszenie było powiązane bezpośrednio przez pole employeeId (zależnie od Twojej struktury)
       final inviteSnapshotById = await FirebaseFirestore.instance
           .collection('invitations')
           .where('salonId', isEqualTo: salonId)
@@ -215,7 +223,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
         batch.delete(doc.reference);
       }
 
-      // Wykonujemy całą operację czyszczenia (modyfikacja usera + usunięcie z salonu + kasowanie zaproszeń)
       await batch.commit();
 
       if (mounted) {
@@ -303,11 +310,48 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                       validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nazwę' : null,
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _cityController,
-                      decoration: InputDecoration(labelText: 'Miasto', prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                      validator: (val) => val == null || val.trim().isEmpty ? 'Podaj miasto' : null,
+
+                    // --- TUTAJ PODMIENIŁEM TEXTFORMFIELD NA BEZPIECZNY DROPDOWN MIAST ---
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                        }
+
+                        List<DropdownMenuItem<String>> cityItems = [];
+                        if (snapshot.hasData) {
+                          for (var doc in snapshot.data!.docs) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            cityItems.add(
+                              DropdownMenuItem(
+                                value: doc.id,
+                                child: Text(data['name'] ?? doc.id),
+                              ),
+                            );
+                          }
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          value: _selectedCityId,
+                          items: cityItems,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedCityId = value;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Miejscowość',
+                            prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          hint: const Text('Wybierz miasto'),
+                          validator: (val) => val == null ? 'Wybierz miasto z listy' : null,
+                        );
+                      },
                     ),
+                    // ------------------------------------------------------------------
+
                     const SizedBox(height: 16),
                     Row(
                       children: [
