@@ -126,7 +126,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       batch.update(salonRef, {
         'salonName': name,
         'address': fullAddress,
-        'cityId': _selectedCityId, // Nadpisujemy poprawne cityId dla klienta
+        'cityId': _selectedCityId,
         'addressDetails': {
           'city': cityName,
           'street': street,
@@ -311,7 +311,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                     ),
                     const SizedBox(height: 16),
 
-                    // --- TUTAJ PODMIENIŁEM TEXTFORMFIELD NA BEZPIECZNY DROPDOWN MIAST ---
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
                       builder: (context, snapshot) {
