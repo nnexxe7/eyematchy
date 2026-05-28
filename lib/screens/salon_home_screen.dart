@@ -80,7 +80,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     final user = FirebaseAuth.instance.currentUser;
 
     try {
-      // 3. Pobieramy dokument wybranego miasta, aby uzyskać jego oficjalną, ładną nazwę (np. "Kraków")
+      // 3. Pobieramy dokument miasta dla ładnej nazwy
       final cityDoc = await FirebaseFirestore.instance.collection('cities').doc(_selectedCityId).get();
       final String cityName = (cityDoc.data() as Map<String, dynamic>?)?['name'] ?? _selectedCityId!;
 
@@ -91,16 +91,28 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
 
-      // 4. Zapisujemy zaktualizowaną strukturę salonu
+      // 4. JEDEN, SPÓJNY ZAPIS SALONU (Usunięto zdublowane wywołanie batch.set)
       batch.set(salonRef, {
         'salonId': generatedSalonId,
         'salonName': name,
         'address': fullAddress,
-        'cityId': _selectedCityId, // Indentyfikator pomocny przy filtrowaniu (np. 'warszawa')
+        'cityId': _selectedCityId,
+
+        // 🕒 Uporządkowane alfabetycznie godziny pracy (Sposób 1)
+        'openingHours': {
+          '1_pon': {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+          '2_wt':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+          '3_sr':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+          '4_czw': {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+          '5_pt':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+          '6_sob': {'1_closed': true,  '2_open': '09:00', '3_close': '14:00'},
+          '7_nd':  {'1_closed': true,  '2_open': '08:00', '3_close': '16:00'},
+        },
+
         'addressDetails': {
           'street': street,
           'number': number,
-          'city': cityName, // Ładna nazwa miasta (np. 'Warszawa')
+          'city': cityName,
         },
         'ownerId': user!.uid,
         'createdAt': FieldValue.serverTimestamp(),

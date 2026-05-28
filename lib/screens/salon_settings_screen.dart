@@ -17,17 +17,35 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
   late TextEditingController _nameController;
   late TextEditingController _streetController;
   late TextEditingController _numberController;
-
-  // NOWOŚĆ: Przechowujemy ID wybranego miasta zamiast czystego tekstu w kontrolerze
   String? _selectedCityId;
 
   bool _isLoading = false;
   bool _isInitialDataLoaded = false;
 
+  Map<String, dynamic> _openingHours = {
+    '1_pon': {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+    '2_wt':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+    '3_sr':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+    '4_czw': {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+    '5_pt':  {'1_closed': false, '2_open': '08:00', '3_close': '16:00'},
+    '6_sob': {'1_closed': true,  '2_open': '09:00', '3_close': '14:00'},
+    '7_nd':  {'1_closed': true,  '2_open': '08:00', '3_close': '16:00'},
+  };
+
+  final Map<String, String> _dayLabels = {
+    '1_pon': 'Poniedziałek',
+    '2_wt': 'Wtorek',
+    '3_sr': 'Środa',
+    '4_czw': 'Czwartek',
+    '5_pt': 'Piątek',
+    '6_sob': 'Sobota',
+    '7_nd': 'Niedziela',
+  };
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _nameController = TextEditingController();
     _streetController = TextEditingController();
     _numberController = TextEditingController();
@@ -57,10 +75,11 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
           _nameController.text = data['salonName'] ?? '';
           _streetController.text = addressDetails['street'] ?? '';
           _numberController.text = addressDetails['number'] ?? '';
-
-          // Pobieramy cityId zapisany w dokumencie salonu.
-          // Jeśli go nie ma (stary dokument), próbujemy dopasować na podstawie nazwy miasta
           _selectedCityId = data['cityId'] ?? (addressDetails['city'] as String?)?.toLowerCase().replaceAll(' ', '-');
+
+          if (data['openingHours'] != null) {
+            _openingHours = Map<String, dynamic>.from(data['openingHours']);
+          }
 
           _isInitialDataLoaded = true;
         });
@@ -83,30 +102,15 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
     setState(() => _isLoading = true);
     final currentUser = FirebaseAuth.instance.currentUser;
-
-    if (currentUser == null) {
-      setState(() => _isLoading = false);
-      return;
-    }
+    if (currentUser == null) return;
 
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-
-      if (!userDoc.exists || userDoc.data() == null) {
-        throw 'Nie znaleziono profilu użytkownika w bazie.';
-      }
-
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
       final currentFullUserData = userDoc.data() as Map<String, dynamic>;
       final String? salonId = currentFullUserData['salonId'];
 
-      if (salonId == null || salonId.isEmpty) {
-        throw 'Twój profil nie jest przypisany do żadnego salonu (brak salonId).';
-      }
+      if (salonId == null || salonId.isEmpty) throw 'Brak przypisanego salonId.';
 
-      // Pobieramy oficjalną, ładną nazwę miasta z dokumentu w kolekcji 'cities'
       final cityDoc = await FirebaseFirestore.instance.collection('cities').doc(_selectedCityId).get();
       final String cityName = (cityDoc.data() as Map<String, dynamic>?)?['name'] ?? _selectedCityId!;
 
@@ -115,14 +119,11 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       final number = _numberController.text.trim();
       final fullAddress = "ul. $street $number, $cityName";
 
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('salonId', isEqualTo: salonId)
-          .get();
+      final usersSnapshot = await FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: salonId).get();
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
-
       final salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
+
       batch.update(salonRef, {
         'salonName': name,
         'address': fullAddress,
@@ -142,13 +143,44 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dane salonu oraz nazwa u wszystkich pracowników zostały zaktualizowane!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Zaktualizowano dane wizytówki!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Błąd zapisu: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveOpeningHours() async {
+    setState(() => _isLoading = true);
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+      final String? salonId = (userDoc.data() as Map<String, dynamic>?)?['salonId'];
+
+      if (salonId == null || salonId.isEmpty) throw 'Brak przypisanego salonId.';
+
+      await FirebaseFirestore.instance.collection('salons').doc(salonId).update({
+        'openingHours': _openingHours,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Godziny pracy zostały pomyślnie zapisane!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd zapisu godzin: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -164,13 +196,10 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Usuń z zespołu'),
-        content: Text('Czy na pewno chcesz usunąć użytkownika $employeeName z zespołu? Straci on uprawnienia oraz wszystkie powiązane zaproszenia.'),
+        content: Text('Czy na pewno chcesz usunąć użytkownika $employeeName z zespołu?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Usuń', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Usuń', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))),
         ],
       ),
     ) ?? false;
@@ -185,7 +214,6 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       }
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
-
       final userRef = FirebaseFirestore.instance.collection('users').doc(employeeId);
       batch.update(userRef, {
         'salonId': FieldValue.delete(),
@@ -202,32 +230,17 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
       });
 
       if (employeeEmail.isNotEmpty) {
-        final inviteSnapshotByEmail = await FirebaseFirestore.instance
-            .collection('invitations')
-            .where('salonId', isEqualTo: salonId)
-            .where('email', isEqualTo: employeeEmail)
-            .get();
-
+        final inviteSnapshotByEmail = await FirebaseFirestore.instance.collection('invitations').where('salonId', isEqualTo: salonId).where('email', isEqualTo: employeeEmail).get();
         for (var doc in inviteSnapshotByEmail.docs) {
           batch.delete(doc.reference);
         }
-      }
-
-      final inviteSnapshotById = await FirebaseFirestore.instance
-          .collection('invitations')
-          .where('salonId', isEqualTo: salonId)
-          .where('employeeId', isEqualTo: employeeId)
-          .get();
-
-      for (var doc in inviteSnapshotById.docs) {
-        batch.delete(doc.reference);
       }
 
       await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Użytkownik $employeeName został usunięty, a jego zaproszenia skasowane.'), backgroundColor: Colors.black87),
+          SnackBar(content: Text('Użytkownik $employeeName został usunięty.'), backgroundColor: Colors.black87),
         );
       }
     } catch (e) {
@@ -245,30 +258,8 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
 
     if (!isOwner) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Brak dostępu'),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.lock_outline, size: 80, color: Colors.redAccent),
-                SizedBox(height: 16),
-                Text('Brak uprawnień', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                SizedBox(height: 8),
-                Text(
-                  'Tylko właściciel salonu ma dostęp do ustawień zarządzania placówką i zespołem.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-        ),
+        appBar: AppBar(title: const Text('Brak dostępu'), backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+        body: const Center(child: Text('Tylko właściciel salonu ma dostęp do ustawień.')),
       );
     }
 
@@ -283,8 +274,9 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.white,
           tabs: const [
-            Tab(icon: Icon(Icons.storefront), text: "Dane salonu"),
-            Tab(icon: Icon(Icons.person_remove_outlined), text: "Zwolnij ludzi"),
+            Tab(icon: Icon(Icons.storefront), text: "Dane"),
+            Tab(icon: Icon(Icons.access_time), text: "Godziny pracy"),
+            Tab(icon: Icon(Icons.person_remove_outlined), text: "Zespół"),
           ],
         ),
       ),
@@ -293,6 +285,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
           : TabBarView(
         controller: _tabController,
         children: [
+          // TAB 1: DANE WIZYTÓWKI
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: Form(
@@ -302,55 +295,31 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text("Wizytówka salonu", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const Text("Tutaj zmienisz nazwę oraz adres swojej placówki.", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _nameController,
                       decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.storefront, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                       validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nazwę' : null,
                     ),
                     const SizedBox(height: 16),
-
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                        }
-
+                        if (!snapshot.hasData) return const LinearProgressIndicator(color: Colors.deepPurple);
                         List<DropdownMenuItem<String>> cityItems = [];
-                        if (snapshot.hasData) {
-                          for (var doc in snapshot.data!.docs) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            cityItems.add(
-                              DropdownMenuItem(
-                                value: doc.id,
-                                child: Text(data['name'] ?? doc.id),
-                              ),
-                            );
-                          }
+                        for (var doc in snapshot.data!.docs) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
                         }
-
                         return DropdownButtonFormField<String>(
                           value: _selectedCityId,
                           items: cityItems,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedCityId = value;
-                            });
-                          },
-                          decoration: InputDecoration(
-                            labelText: 'Miejscowość',
-                            prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          hint: const Text('Wybierz miasto'),
-                          validator: (val) => val == null ? 'Wybierz miasto z listy' : null,
+                          onChanged: (value) => setState(() => _selectedCityId = value),
+                          decoration: InputDecoration(labelText: 'Miejscowość', prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                          validator: (val) => val == null ? 'Wybierz miasto' : null,
                         );
                       },
                     ),
-                    // ------------------------------------------------------------------
-
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -380,7 +349,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _updateSalonData,
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz zmiany', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz wizytówkę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -388,55 +357,78 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
               ),
             ),
           ),
+
+          // TAB 2: PANEL USTAWIEŃ GODZIN PRACY CHRONOLOGICZNYCH
+          Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Godziny otwarcia", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text("Zdefiniuj ramy czasowe działania Twojego salonu dla każdego dnia tygodnia.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView(
+                    children: (() {
+                      // Tutaj sortujemy dni alfabetycznie na podstawie prefiksów 1_, 2_ itp.
+                      final sortedKeys = _openingHours.keys.toList()..sort();
+
+                      return sortedKeys.map((key) {
+                        return BusinessDayRow(
+                          dayName: _dayLabels[key] ?? key,
+                          dayData: _openingHours[key],
+                          onChanged: (newData) {
+                            setState(() {
+                              _openingHours[key] = newData;
+                            });
+                          },
+                        );
+                      }).toList();
+                    })(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _saveOpeningHours,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz godziny pracy', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // TAB 3: ZESPÓŁ
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text("Zarządzanie uprawnieniami", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const Text("Kliknij przycisk kosza obok pracownika, aby bezpowrotnie usunąć go ze struktur Twojego salonu.", style: TextStyle(color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 20),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .where('salonId', isEqualTo: widget.userData['salonId'])
-                        .snapshots(),
+                    stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: widget.userData['salonId']).snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                      if (snapshot.data!.docs.isEmpty) return const Center(child: Text("Brak pracowników w salonie."));
-
                       return ListView.builder(
                         itemCount: snapshot.data!.docs.length,
                         itemBuilder: (context, index) {
                           final doc = snapshot.data!.docs[index];
                           final employee = doc.data() as Map<String, dynamic>;
-
-                          final String fName = employee['firstName'] ?? '';
-                          final String lName = employee['lastName'] ?? '';
-                          final String fullName = "$fName $lName".trim();
-                          final String email = employee['email'] ?? '';
-                          final String role = employee['salonRole'] ?? 'employee';
-                          final String empId = doc.id;
-
-                          final bool isMeOwner = role == 'owner';
+                          final String fullName = "${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}".trim();
+                          final bool isMeOwner = employee['salonRole'] == 'owner';
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50],
-                                child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent),
-                              ),
+                              leading: CircleAvatar(backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50], child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent)),
                               title: Text(fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text(isMeOwner ? "Właściciel (Ty)" : email, style: TextStyle(color: isMeOwner ? Colors.amber[900] : Colors.grey)),
-                              trailing: isMeOwner
-                                  ? const SizedBox()
-                                  : IconButton(
-                                icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-                                onPressed: () => _fireEmployee(empId, fullName),
-                              ),
+                              subtitle: Text(isMeOwner ? "Właściciel (Ty)" : (employee['email'] ?? '')),
+                              trailing: isMeOwner ? const SizedBox() : IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), onPressed: () => _fireEmployee(doc.id, fullName)),
                             ),
                           );
                         },
@@ -447,6 +439,93 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class BusinessDayRow extends StatelessWidget {
+  final String dayName;
+  final Map<String, dynamic> dayData;
+  final Function(Map<String, dynamic>) onChanged;
+
+  const BusinessDayRow({
+    super.key,
+    required this.dayName,
+    required this.dayData,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    bool isClosed = dayData['1_closed'] ?? false;
+    String openTime = dayData['2_open'] ?? '08:00';
+    String closeTime = dayData['3_close'] ?? '16:00';
+
+    Future<void> pickTime(BuildContext context, bool isOpenTime) async {
+      final currentStr = isOpenTime ? openTime : closeTime;
+      final parts = currentStr.split(':');
+      final initialTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: initialTime,
+      );
+
+      if (picked != null) {
+        final formatted = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+        final newData = Map<String, dynamic>.from(dayData);
+        if (isOpenTime) {
+          newData['2_open'] = formatted;
+        } else {
+          newData['3_close'] = formatted;
+        }
+        onChanged(newData);
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              dayName,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isClosed ? Colors.grey : Colors.black87,
+              ),
+            ),
+          ),
+          Checkbox(
+            value: !isClosed,
+            activeColor: Colors.deepPurple,
+            onChanged: (val) {
+              final newData = Map<String, dynamic>.from(dayData);
+              newData['1_closed'] = val == false;
+              onChanged(newData);
+            },
+          ),
+          Text(
+            !isClosed ? 'Otwarte' : 'Zamknięte',
+            style: TextStyle(color: !isClosed ? Colors.green : Colors.redAccent, fontSize: 13),
+          ),
+          const Spacer(),
+          if (!isClosed) ...[
+            TextButton(
+              onPressed: () => pickTime(context, true),
+              style: TextButton.styleFrom(backgroundColor: Colors.grey[100]),
+              child: Text(openTime, style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+            ),
+            const Text(' do '),
+            TextButton(
+              onPressed: () => pickTime(context, false),
+              style: TextButton.styleFrom(backgroundColor: Colors.grey[100]),
+              child: Text(closeTime, style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ],
       ),
     );
