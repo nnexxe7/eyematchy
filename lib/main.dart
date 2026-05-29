@@ -105,15 +105,16 @@ class AppDrawer extends StatelessWidget {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final roles = List<String>.from(userData['roles'] ?? []);
     final hasBothRoles = roles.contains('client') && roles.contains('salon');
+    final bool isOwner = currentRole == 'salon' && userData['salonRole'] == 'owner';
 
     return Drawer(
       child: Column(
         children: [
+          // --- GÓRNY NAGŁÓWEK UŻYTKOWNIKA ---
           UserAccountsDrawerHeader(
             decoration: const BoxDecoration(color: Colors.deepPurple),
             currentAccountPicture: const CircleAvatar(
@@ -124,7 +125,6 @@ class AppDrawer extends StatelessWidget {
             accountEmail: Text(userData['email'] ?? ''),
           ),
 
-          // --- PRZEŁĄCZANIE RÓL ---
           if (hasBothRoles) ...[
             if (currentRole == 'salon')
               ListTile(
@@ -138,15 +138,13 @@ class AppDrawer extends StatelessWidget {
                 title: const Text('Przełącz na panel Stylistki'),
                 onTap: () => _toggleView(context, 'salon'),
               ),
-            const Divider(),
           ] else ...[
-            // Sekcja widoczna tylko dla osób będących wyłącznie klientkami
             if (currentRole == 'client')
               ListTile(
                 leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
                 title: const Text('Zaproszenia do pracy'),
                 onTap: () {
-                  Navigator.pop(context); // Zamyka Drawer
+                  Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -155,12 +153,16 @@ class AppDrawer extends StatelessWidget {
                   );
                 },
               ),
-            const Divider(),
           ],
-          if (currentRole == 'salon' && userData['salonRole'] == 'owner') ...[
+
+          const Spacer(),
+
+          const Divider(height: 1),
+
+          if (isOwner)
             ListTile(
-              leading: const Icon(Icons.settings_outlined, color: Colors.deepPurple),
-              title: const Text('Ustawienia Salonu'),
+              leading: const Icon(Icons.settings_outlined, color: Colors.black87),
+              title: const Text('Ustawienia Salonu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -171,14 +173,13 @@ class AppDrawer extends StatelessWidget {
                 );
               },
             ),
-            const Divider(),
-          ],
 
+          // Ustawienia Profilu (Zawsze na dole)
           ListTile(
             leading: const Icon(Icons.manage_accounts_outlined, color: Colors.black87),
             title: const Text('Ustawienia profilu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
             onTap: () {
-              Navigator.pop(context); // Zamyka szufladę bocznego menu
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -187,18 +188,17 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
-          const Divider(height: 1), // Linia oddzielająca sekcje
 
-          const Spacer(),
+          // Przycisk Wyloguj się (Zamyka całe menu bocznego panelu)
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: const Text('Wyloguj się', style: TextStyle(color: Colors.redAccent)),
+            title: const Text('Wyloguj się', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
             onTap: () {
               Navigator.pop(context);
               FirebaseAuth.instance.signOut();
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
       ),
     );
