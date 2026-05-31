@@ -501,109 +501,158 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           body: TabBarView(
             controller: _tabController,
             children: [
-              // --- ZAKŁADKA 1: NOWY KALENDARZ WIELOKOLUMNOWY (PODZIAŁ NA OSOBY) ---
-              StreamBuilder<QuerySnapshot>(
+              // --- ZAKŁADKA 1: KALENDARZ WIELOKOLUMNOWY Z WYSZARZANIEM ---
+              StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .where('salonId', isEqualTo: liveUserData['salonId'])
+                    .collection('salons')
+                    .doc(liveUserData['salonId'])
                     .snapshots(),
-                builder: (context, empSnapshot) {
-                  if (empSnapshot.connectionState == ConnectionState.waiting) {
+                builder: (context, salonSnapshot) {
+                  if (salonSnapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                   }
 
-                  final employees = empSnapshot.data?.docs ?? [];
+                  Map<String, dynamic> openingHours = {};
+                  if (salonSnapshot.hasData && salonSnapshot.data!.exists) {
+                    final salonData = salonSnapshot.data!.data() as Map<String, dynamic>;
+                    openingHours = salonData['openingHours'] ?? {};
+                  }
 
-                  return Column(
-                    children: [
-                      _buildDatePicker(),
+                  final daysMapping = {
+                    1: '1_pon',
+                    2: '2_wt',
+                    3: '3_sr',
+                    4: '4_czw',
+                    5: '5_pt',
+                    6: '6_sob',
+                    7: '7_nd'
+                  };
+                  String currentDayKey = daysMapping[_selectedDate.weekday] ?? '1_pon';
+                  Map<String, dynamic> dayConfig = openingHours[currentDayKey] ?? {
+                    '1_closed': false,
+                    '2_open': '08:00',
+                    '3_close': '16:00'
+                  };
 
-                      if (employees.isNotEmpty)
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 60),
-                              ...employees.map((emp) {
-                                final eData = emp.data() as Map<String, dynamic>;
-                                final String name = eData['firstName'] ?? 'Stylistka';
-                                return Expanded(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
-                                    ),
-                                    child: Text(
-                                      name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
+                  bool isDayClosed = dayConfig['1_closed'] ?? false;
+                  int openHour = int.tryParse(dayConfig['2_open']?.split(':')[0] ?? '08') ?? 8;
+                  int closeHour = int.tryParse(dayConfig['3_close']?.split(':')[0] ?? '16') ?? 16;
 
-                      // 🕒 SIATKA GODZIN Z PODZIAŁEM NA PIONOWE KOLUMNY PRACOWNIKÓW
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: 12, // Od 8:00 do 19:00
-                          itemBuilder: (context, index) {
-                            final hour = index + 8;
-                            return Container(
-                              decoration: const BoxDecoration(
-                                border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0), width: 0.5)),
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .where('salonId', isEqualTo: liveUserData['salonId'])
+                        .snapshots(),
+                    builder: (context, empSnapshot) {
+                      if (empSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                      }
+
+                      final employees = empSnapshot.data?.docs ?? [];
+
+                      return Column(
+                        children: [
+                          _buildDatePicker(),
+
+                          if (employees.isNotEmpty)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
                               ),
                               child: Row(
                                 children: [
-                                  // Stała kolumna z godziną po lewej stronie
-                                  Container(
-                                    width: 60,
-                                    height: 65,
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      "$hour:00",
-                                      style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black54, fontSize: 13),
-                                    ),
-                                  ),
-
-                                  // Generowanie osobnej kolumny (slotu) dla każdej stylistki
+                                  const SizedBox(width: 60),
                                   ...employees.map((emp) {
+                                    final eData = emp.data() as Map<String, dynamic>;
+                                    final String name = eData['firstName'] ?? 'Stylistka';
                                     return Expanded(
                                       child: Container(
-                                        height: 65,
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          color: index % 2 == 0 ? Colors.white : const Color(0xFFFAFAFA),
-                                          border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                          border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
                                         ),
-                                        child: InkWell(
-                                          onTap: () {
-                                            final eData = emp.data() as Map<String, dynamic>;
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Wybrano godzinę $hour:00 u stylistki: ${eData['firstName']}'),
-                                                duration: const Duration(seconds: 1),
-                                              ),
-                                            );
-                                          },
-                                          child: const SizedBox.expand(),
+                                        child: Text(
+                                          name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
                                         ),
                                       ),
                                     );
                                   }),
                                 ],
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                            ),
+
+                          // 🕒 SIATKA 15 GODZIN (7:00 - 21:00) Z WYSZARZANIEM
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: 15,
+                              itemBuilder: (context, index) {
+                                final hour = index + 7;
+                                bool isSlotClosed = isDayClosed || hour < openHour || hour >= closeHour;
+
+                                return Container(
+                                  decoration: const BoxDecoration(
+                                    border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0), width: 0.5)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 60,
+                                        height: 65,
+                                        alignment: Alignment.center,
+                                        color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                        child: Text(
+                                          "$hour:00",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              color: isSlotClosed ? Colors.grey[500] : Colors.black87, // POPRAWIONE
+                                              fontSize: 13
+                                          ),
+                                        ),
+                                      ),
+
+                                      ...employees.map((emp) {
+                                        return Expanded(
+                                          child: Container(
+                                            height: 65,
+                                            decoration: BoxDecoration(
+                                              color: isSlotClosed
+                                                  ? Colors.grey[150] ?? const Color(0xEFEFEFEF)
+                                                  : (index % 2 == 0 ? Colors.white : const Color(0xFFFAFAFA)),
+                                              border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                            ),
+                                            child: InkWell(
+                                              onTap: isSlotClosed ? null : () {
+                                                final eData = emp.data() as Map<String, dynamic>;
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Wybrano godzinę $hour:00 u stylistki: ${eData['firstName']}'),
+                                                    duration: const Duration(seconds: 1),
+                                                  ),
+                                                );
+                                              },
+                                              child: isSlotClosed
+                                                  ? const Center(
+                                                child: Icon(Icons.lock_outline, size: 16, color: Colors.black26), // POPRAWIONE
+                                              )
+                                                  : const SizedBox.expand(),
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
