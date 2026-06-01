@@ -535,8 +535,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   };
 
                   bool isDayClosed = dayConfig['1_closed'] ?? false;
-                  int openHour = int.tryParse(dayConfig['2_open']?.split(':')[0] ?? '08') ?? 8;
-                  int closeHour = int.tryParse(dayConfig['3_close']?.split(':')[0] ?? '16') ?? 16;
+
+                  // Parsujemy ramy czasowe na minuty (np. "08:30" -> 8 * 60 + 30 = 510 minut)
+                  List<String> openParts = (dayConfig['2_open'] ?? '08:00').split(':');
+                  List<String> closeParts = (dayConfig['3_close'] ?? '16:00').split(':');
+
+                  int openInMinutes = (int.tryParse(openParts[0]) ?? 8) * 60 + (int.tryParse(openParts[1]) ?? 0);
+                  int closeInMinutes = (int.tryParse(closeParts[0]) ?? 16) * 60 + (int.tryParse(closeParts[1]) ?? 0);
 
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
@@ -586,43 +591,65 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                               ),
                             ),
 
-                          // 🕒 SIATKA 15 GODZIN (7:00 - 21:00) Z WYSZARZANIEM
+                          // 🕒 NOWA SIATKA: 15-minutowe sloty (Od 07:00 do 21:00 daje 56 slotów)
                           Expanded(
                             child: ListView.builder(
-                              itemCount: 15,
+                              itemCount: 56,
                               itemBuilder: (context, index) {
-                                final hour = index + 7;
-                                bool isSlotClosed = isDayClosed || hour < openHour || hour >= closeHour;
+                                // Obliczamy czas dla bieżącego wiersza
+                                int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                int slotHour = currentMinutesFromDayStart ~/ 60;
+                                int slotMinute = currentMinutesFromDayStart % 60;
+
+                                // Formatowanie tekstu godziny (np. "09:00", "09:15", "09:30")
+                                String formattedTime = "${slotHour.toString()}:${slotMinute.toString().padLeft(2, '0')}";
+
+                                // Sprawdzamy czy dany slot jest poza godzinami pracy
+                                bool isSlotClosed = isDayClosed ||
+                                    currentMinutesFromDayStart < openInMinutes ||
+                                    currentMinutesFromDayStart >= closeInMinutes;
+
+                                // Dla czystszych linii: pełna godzina ma ciemniejszy tekst, kwadranse mają jaśniejszy
+                                bool isFullHour = slotMinute == 0;
 
                                 return Container(
-                                  decoration: const BoxDecoration(
-                                    border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0), width: 0.5)),
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
+                                        width: isFullHour ? 0.8 : 0.5,
+                                      ),
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
+                                      // Kolumna z czasem po lewej stronie
                                       Container(
                                         width: 60,
-                                        height: 65,
+                                        height: 50, // Zmniejszyłem wysokość wiersza z 65 na 50, żeby gęstsza siatka była czytelna
                                         alignment: Alignment.center,
                                         color: isSlotClosed ? Colors.grey[200] : Colors.white,
                                         child: Text(
-                                          "$hour:00",
+                                          formattedTime,
                                           style: TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              color: isSlotClosed ? Colors.grey[500] : Colors.black87, // POPRAWIONE
-                                              fontSize: 13
+                                            fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                            color: isSlotClosed
+                                                ? Colors.grey[400]
+                                                : (isFullHour ? Colors.black87 : Colors.black54),
+                                            fontSize: 12,
                                           ),
                                         ),
                                       ),
 
+                                      // Kolumny pracowników
                                       ...employees.map((emp) {
                                         return Expanded(
                                           child: Container(
-                                            height: 65,
+                                            height: 50,
                                             decoration: BoxDecoration(
                                               color: isSlotClosed
                                                   ? Colors.grey[150] ?? const Color(0xEFEFEFEF)
-                                                  : (index % 2 == 0 ? Colors.white : const Color(0xFFFAFAFA)),
+                                                  : Colors.white,
                                               border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
                                             ),
                                             child: InkWell(
@@ -630,14 +657,17 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                 final eData = emp.data() as Map<String, dynamic>;
                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                   SnackBar(
-                                                    content: Text('Wybrano godzinę $hour:00 u stylistki: ${eData['firstName']}'),
+                                                    content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
                                                     duration: const Duration(seconds: 1),
                                                   ),
                                                 );
                                               },
                                               child: isSlotClosed
-                                                  ? const Center(
-                                                child: Icon(Icons.lock_outline, size: 16, color: Colors.black26), // POPRAWIONE
+                                                  ? Center(
+                                                // Ikona kłódeczki tylko o pełnych godzinach, żeby nie zaśmiecać widoku
+                                                child: isFullHour
+                                                    ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
+                                                    : const SizedBox(),
                                               )
                                                   : const SizedBox.expand(),
                                             ),
