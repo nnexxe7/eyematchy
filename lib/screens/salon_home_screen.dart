@@ -593,95 +593,130 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                   ),
                                 ),
 
-                              // 🕒 SIATKA SLOTÓW 15-MINUTOWYCH (ZWIĘKSZONA WYSOKOŚĆ DO 55)
                               Expanded(
                                 child: ListView.builder(
                                   itemCount: 56,
                                   itemBuilder: (context, index) {
                                     int currentMinutesFromDayStart = (7 * 60) + (index * 15);
-                                    int slotHour = currentMinutesFromDayStart ~/ 60;
-                                    int slotMinute = currentMinutesFromDayStart % 60;
-
-                                    String formattedTime = "${slotHour.toString()}:${slotMinute.toString().padLeft(2, '0')}";
+                                    int hour = currentMinutesFromDayStart ~/ 60;
+                                    int minute = currentMinutesFromDayStart % 60;
+                                    String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
                                     bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
-                                    bool isFullHour = slotMinute == 0;
+                                    bool isFullHour = minute == 0;
 
                                     return Container(
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
-                                            width: isFullHour ? 0.8 : 0.5,
-                                          ),
-                                        ),
-                                      ),
+                                      // USUNIĘTO BORDER STĄD, ABY NIE PRZECINAŁ WIZYT!
+                                      color: Colors.transparent,
                                       child: Row(
                                         children: [
+                                          // Kolumna z godziną (lewa strona)
                                           Container(
-                                            width: 60,
-                                            height: 55,
-                                            alignment: Alignment.center,
-                                            color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                            width: 60, height: 55, alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                              // Kolumna godziny zachowuje standardowe linie podziału
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
+                                                  width: isFullHour ? 0.8 : 0.5,
+                                                ),
+                                              ),
+                                            ),
                                             child: Text(
                                               formattedTime,
                                               style: TextStyle(
                                                 fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                                color: isSlotClosed ? Colors.grey[400] : (isFullHour ? Colors.black87 : Colors.black54),
+                                                color: isSlotClosed ? Colors.grey[400] : Colors.black87,
                                                 fontSize: 12,
                                               ),
                                             ),
                                           ),
 
+                                          // Kolumny pracowników
                                           ...employees.map((emp) {
                                             final String empId = emp.id;
 
-                                            // Filtrujemy rezerwacje dla tej konkretnej komórki stylistki i godziny
                                             Map<String, dynamic>? appointmentData;
+                                            bool isStartOfBooking = false;
+                                            bool isEndOfBooking = false;
+
                                             for (var appDoc in activeAppointments) {
                                               final d = appDoc.data() as Map<String, dynamic>;
-                                              if (d['employeeId'] == empId && d['time'] == formattedTime) {
+                                              if (d['employeeId'] != empId) continue;
+
+                                              List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                              int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                              int duration = d['duration'] ?? 30;
+                                              int appEnd = appStart + duration;
+
+                                              if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
                                                 appointmentData = d;
+                                                isStartOfBooking = (currentMinutesFromDayStart == appStart);
+                                                isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
                                                 break;
                                               }
                                             }
 
                                             bool hasBooking = appointmentData != null;
 
+                                            // KLUCZOWY WARUNEK: Rysujemy dolną linię tylko wtedy, gdy NIE ma rezerwacji,
+                                            // ALBO gdy jest to dokładnie ostatni kwadrans (koniec) danej rezerwacji.
+                                            bool drawBottomLine = !hasBooking || isEndOfBooking;
+
                                             return Expanded(
                                               child: Container(
                                                 height: 55,
                                                 decoration: BoxDecoration(
                                                   color: hasBooking
-                                                      ? Colors.purple[50]
+                                                      ? Colors.deepPurple // Idealnie lity fiolet na całej komórce siatki
                                                       : (isSlotClosed ? Colors.grey[150] : Colors.white),
-                                                  border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                                  border: Border(
+                                                    left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                                    // Dynamiczna linia dolna komórki
+                                                    bottom: drawBottomLine
+                                                        ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                                        : BorderSide.none, // Ukrywa linię wewnątrz trwającej wizyty!
+                                                  ),
                                                 ),
                                                 child: hasBooking
                                                     ? Container(
-                                                  margin: const EdgeInsets.all(2),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                  // Marginesy tylko z lewej i prawej, żeby odkleić wizyty od innych pracowników.
+                                                  // Margines górny i dolny aktywuje się TYLKO na krańcach całej wizyty.
+                                                  margin: EdgeInsets.only(
+                                                    left: 3,
+                                                    right: 3,
+                                                    top: isStartOfBooking ? 3 : 0,
+                                                    bottom: isEndOfBooking ? 3 : 0,
+                                                  ),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                                                   decoration: BoxDecoration(
                                                     color: Colors.deepPurple,
-                                                    borderRadius: BorderRadius.circular(6),
+                                                    borderRadius: BorderRadius.vertical(
+                                                      top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                      bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                    ),
                                                   ),
-                                                  child: Column(
+                                                  child: isStartOfBooking
+                                                      ? Column(
                                                     mainAxisAlignment: MainAxisAlignment.center,
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
                                                       Text(
-                                                        appointmentData!['clientName'] ?? 'Klient',
+                                                        appointmentData['clientName'] ?? 'Klient',
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
+                                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                                                       ),
+                                                      const SizedBox(height: 1),
                                                       Text(
                                                         appointmentData['serviceName'] ?? 'Usługa',
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                                        style: const TextStyle(color: Colors.white70, fontSize: 10),
                                                       ),
                                                     ],
-                                                  ),
+                                                  )
+                                                      : const SizedBox.shrink(),
                                                 )
                                                     : InkWell(
                                                   onTap: isSlotClosed ? null : () {

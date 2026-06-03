@@ -308,6 +308,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       ),
 
                     // Siatka 15-minutowych slotów
+                    // Siatka 15-minutowych slotów
                     Expanded(
                       child: ListView.builder(
                         itemCount: 56,
@@ -320,43 +321,69 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           bool isFullHour = minute == 0;
 
                           return Container(
-                            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5))),
+                            color: Colors.transparent, // Brak obramowania na poziomie wiersza
                             child: Row(
                               children: [
+                                // Kolumna godziny
                                 Container(
                                   width: 60, height: 55, alignment: Alignment.center,
-                                  color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                  decoration: BoxDecoration(
+                                    color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
+                                        width: isFullHour ? 0.8 : 0.5,
+                                      ),
+                                    ),
+                                  ),
                                   child: Text(formattedTime, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 12)),
                                 ),
+
+                                // Kolumny pracowników
                                 ...employees.map((emp) {
                                   final String empId = emp.id;
 
-                                  // --- NOWOŚĆ: Sprawdzamy czy ten termin jest już zarezerwowany ---
                                   bool isAlreadyBooked = false;
+                                  bool isStartOfBooking = false;
+                                  bool isEndOfBooking = false;
+
                                   for (var appDoc in activeAppointments) {
                                     final d = appDoc.data() as Map<String, dynamic>;
-                                    if (d['employeeId'] == empId && d['time'] == formattedTime) {
+                                    if (d['employeeId'] != empId) continue;
+
+                                    List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                    int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                    int duration = d['duration'] ?? 30;
+                                    int appEnd = appStart + duration;
+
+                                    if (currentMinutes >= appStart && currentMinutes < appEnd) {
                                       isAlreadyBooked = true;
+                                      isStartOfBooking = (currentMinutes == appStart);
+                                      isEndOfBooking = (currentMinutes + 15 == appEnd);
                                       break;
                                     }
                                   }
 
-                                  // Łączymy powody zablokowania: albo salon zamknięty, albo termin już zajęty
                                   bool shouldBlock = isSlotClosed || isAlreadyBooked;
+                                  // Rysujemy dolną linię tylko jeśli to nie jest rezerwacja, lub jest to jej koniec
+                                  bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
 
                                   return Expanded(
                                     child: Container(
                                       height: 55,
                                       decoration: BoxDecoration(
                                         color: isAlreadyBooked
-                                            ? Colors.red[50] // Czerwonawe/delikatne tło dla zajętego terminu
+                                            ? Colors.red[50]
                                             : (isSlotClosed ? Colors.grey[150] : Colors.white),
-                                        border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                        border: Border(
+                                          left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                          bottom: drawBottomBorder
+                                              ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                              : BorderSide.none,
+                                        ),
                                       ),
                                       child: InkWell(
-                                        onTap: shouldBlock
-                                            ? null // Blokada kliknięcia
-                                            : () {
+                                        onTap: shouldBlock ? null : () {
                                           final eData = emp.data() as Map<String, dynamic>;
                                           setState(() {
                                             _selectedEmployeeId = emp.id;
@@ -366,11 +393,13 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                           });
                                         },
                                         child: isAlreadyBooked
-                                            ? const Center(
-                                          child: Text(
+                                            ? Center(
+                                          child: isStartOfBooking
+                                              ? const Text(
                                             'Zajęte',
-                                            style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w500),
-                                          ),
+                                            style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                          )
+                                              : const SizedBox.shrink(),
                                         )
                                             : (isSlotClosed && isFullHour
                                             ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26))
