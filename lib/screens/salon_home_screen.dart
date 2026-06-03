@@ -202,7 +202,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd usuwania: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text('Błąd Screenu usuwania: $e'), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -501,7 +501,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           body: TabBarView(
             controller: _tabController,
             children: [
-              // --- ZAKŁADKA 1: KALENDARZ WIELOKOLUMNOWY Z WYSZARZANIEM ---
+              // --- ZAKŁADKA 1: KALENDARZ WIELOKOLUMNOWY Z WYSZARZANIEM I WIZYTAMI ---
               StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('salons')
@@ -518,169 +518,201 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     openingHours = salonData['openingHours'] ?? {};
                   }
 
-                  final daysMapping = {
-                    1: '1_pon',
-                    2: '2_wt',
-                    3: '3_sr',
-                    4: '4_czw',
-                    5: '5_pt',
-                    6: '6_sob',
-                    7: '7_nd'
-                  };
+                  final daysMapping = {1: '1_pon', 2: '2_wt', 3: '3_sr', 4: '4_czw', 5: '5_pt', 6: '6_sob', 7: '7_nd'};
                   String currentDayKey = daysMapping[_selectedDate.weekday] ?? '1_pon';
-                  Map<String, dynamic> dayConfig = openingHours[currentDayKey] ?? {
-                    '1_closed': false,
-                    '2_open': '08:00',
-                    '3_close': '16:00'
-                  };
+                  Map<String, dynamic> dayConfig = openingHours[currentDayKey] ?? {'1_closed': false, '2_open': '08:00', '3_close': '16:00'};
 
                   bool isDayClosed = dayConfig['1_closed'] ?? false;
-
-                  // Parsujemy ramy czasowe na minuty (np. "08:30" -> 8 * 60 + 30 = 510 minut)
                   List<String> openParts = (dayConfig['2_open'] ?? '08:00').split(':');
                   List<String> closeParts = (dayConfig['3_close'] ?? '16:00').split(':');
 
                   int openInMinutes = (int.tryParse(openParts[0]) ?? 8) * 60 + (int.tryParse(openParts[1]) ?? 0);
                   int closeInMinutes = (int.tryParse(closeParts[0]) ?? 16) * 60 + (int.tryParse(closeParts[1]) ?? 0);
 
+                  final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
+
+                  // Pobieramy stream aktualnych wizyt dla wybranego dnia
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
-                        .collection('users')
+                        .collection('appointments')
                         .where('salonId', isEqualTo: liveUserData['salonId'])
+                        .where('date', isEqualTo: formattedDateStr)
                         .snapshots(),
-                    builder: (context, empSnapshot) {
-                      if (empSnapshot.connectionState == ConnectionState.waiting) {
+                    builder: (context, appointmentsSnapshot) {
+                      if (appointmentsSnapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                       }
 
-                      final employees = empSnapshot.data?.docs ?? [];
+                      final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.data?.docs ?? [];
 
-                      return Column(
-                        children: [
-                          _buildDatePicker(),
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .where('salonId', isEqualTo: liveUserData['salonId'])
+                            .snapshots(),
+                        builder: (context, empSnapshot) {
+                          if (empSnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                          }
 
-                          if (employees.isNotEmpty)
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
-                              ),
-                              child: Row(
-                                children: [
-                                  const SizedBox(width: 60),
-                                  ...employees.map((emp) {
-                                    final eData = emp.data() as Map<String, dynamic>;
-                                    final String name = eData['firstName'] ?? 'Stylistka';
-                                    return Expanded(
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(vertical: 10),
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
-                                        ),
-                                        child: Text(
-                                          name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
+                          final employees = empSnapshot.data?.docs ?? [];
 
-                          // 🕒 NOWA SIATKA: 15-minutowe sloty (Od 07:00 do 21:00 daje 56 slotów)
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: 56,
-                              itemBuilder: (context, index) {
-                                // Obliczamy czas dla bieżącego wiersza
-                                int currentMinutesFromDayStart = (7 * 60) + (index * 15);
-                                int slotHour = currentMinutesFromDayStart ~/ 60;
-                                int slotMinute = currentMinutesFromDayStart % 60;
+                          return Column(
+                            children: [
+                              _buildDatePicker(),
 
-                                // Formatowanie tekstu godziny (np. "09:00", "09:15", "09:30")
-                                String formattedTime = "${slotHour.toString()}:${slotMinute.toString().padLeft(2, '0')}";
-
-                                // Sprawdzamy czy dany slot jest poza godzinami pracy
-                                bool isSlotClosed = isDayClosed ||
-                                    currentMinutesFromDayStart < openInMinutes ||
-                                    currentMinutesFromDayStart >= closeInMinutes;
-
-                                // Dla czystszych linii: pełna godzina ma ciemniejszy tekst, kwadranse mają jaśniejszy
-                                bool isFullHour = slotMinute == 0;
-
-                                return Container(
+                              if (employees.isNotEmpty)
+                                Container(
                                   decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
-                                        width: isFullHour ? 0.8 : 0.5,
-                                      ),
-                                    ),
+                                    color: Colors.grey[100],
+                                    border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
                                   ),
                                   child: Row(
                                     children: [
-                                      // Kolumna z czasem po lewej stronie
-                                      Container(
-                                        width: 60,
-                                        height: 50, // Zmniejszyłem wysokość wiersza z 65 na 50, żeby gęstsza siatka była czytelna
-                                        alignment: Alignment.center,
-                                        color: isSlotClosed ? Colors.grey[200] : Colors.white,
-                                        child: Text(
-                                          formattedTime,
-                                          style: TextStyle(
-                                            fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                            color: isSlotClosed
-                                                ? Colors.grey[400]
-                                                : (isFullHour ? Colors.black87 : Colors.black54),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-
-                                      // Kolumny pracowników
+                                      const SizedBox(width: 60),
                                       ...employees.map((emp) {
+                                        final eData = emp.data() as Map<String, dynamic>;
+                                        final String name = eData['firstName'] ?? 'Stylistka';
                                         return Expanded(
                                           child: Container(
-                                            height: 50,
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            alignment: Alignment.center,
                                             decoration: BoxDecoration(
-                                              color: isSlotClosed
-                                                  ? Colors.grey[150] ?? const Color(0xEFEFEFEF)
-                                                  : Colors.white,
-                                              border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                              border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
                                             ),
-                                            child: InkWell(
-                                              onTap: isSlotClosed ? null : () {
-                                                final eData = emp.data() as Map<String, dynamic>;
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
-                                                    duration: const Duration(seconds: 1),
-                                                  ),
-                                                );
-                                              },
-                                              child: isSlotClosed
-                                                  ? Center(
-                                                // Ikona kłódeczki tylko o pełnych godzinach, żeby nie zaśmiecać widoku
-                                                child: isFullHour
-                                                    ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
-                                                    : const SizedBox(),
-                                              )
-                                                  : const SizedBox.expand(),
+                                            child: Text(
+                                              name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
                                             ),
                                           ),
                                         );
                                       }),
                                     ],
                                   ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
+                                ),
+
+                              // 🕒 SIATKA SLOTÓW 15-MINUTOWYCH (ZWIĘKSZONA WYSOKOŚĆ DO 55)
+                              Expanded(
+                                child: ListView.builder(
+                                  itemCount: 56,
+                                  itemBuilder: (context, index) {
+                                    int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                    int slotHour = currentMinutesFromDayStart ~/ 60;
+                                    int slotMinute = currentMinutesFromDayStart % 60;
+
+                                    String formattedTime = "${slotHour.toString()}:${slotMinute.toString().padLeft(2, '0')}";
+                                    bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
+                                    bool isFullHour = slotMinute == 0;
+
+                                    return Container(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
+                                            width: isFullHour ? 0.8 : 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 60,
+                                            height: 55,
+                                            alignment: Alignment.center,
+                                            color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                            child: Text(
+                                              formattedTime,
+                                              style: TextStyle(
+                                                fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                                color: isSlotClosed ? Colors.grey[400] : (isFullHour ? Colors.black87 : Colors.black54),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+
+                                          ...employees.map((emp) {
+                                            final String empId = emp.id;
+
+                                            // Filtrujemy rezerwacje dla tej konkretnej komórki stylistki i godziny
+                                            Map<String, dynamic>? appointmentData;
+                                            for (var appDoc in activeAppointments) {
+                                              final d = appDoc.data() as Map<String, dynamic>;
+                                              if (d['employeeId'] == empId && d['time'] == formattedTime) {
+                                                appointmentData = d;
+                                                break;
+                                              }
+                                            }
+
+                                            bool hasBooking = appointmentData != null;
+
+                                            return Expanded(
+                                              child: Container(
+                                                height: 55,
+                                                decoration: BoxDecoration(
+                                                  color: hasBooking
+                                                      ? Colors.purple[50]
+                                                      : (isSlotClosed ? Colors.grey[150] : Colors.white),
+                                                  border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                                ),
+                                                child: hasBooking
+                                                    ? Container(
+                                                  margin: const EdgeInsets.all(2),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.deepPurple,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        appointmentData!['clientName'] ?? 'Klient',
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
+                                                      ),
+                                                      Text(
+                                                        appointmentData['serviceName'] ?? 'Usługa',
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                                    : InkWell(
+                                                  onTap: isSlotClosed ? null : () {
+                                                    final eData = emp.data() as Map<String, dynamic>;
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
+                                                        duration: const Duration(seconds: 1),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: isSlotClosed
+                                                      ? Center(
+                                                    child: isFullHour
+                                                        ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
+                                                        : const SizedBox(),
+                                                  )
+                                                      : const SizedBox.expand(),
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
                   );

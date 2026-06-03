@@ -209,7 +209,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   }
 
   // =========================================================================
-  // KROK 2: DYNAMICZNY KALENDARZ WIELOKOLUMNOWY Z WYSZARZANIEM
+  // KROK 2: DYNAMICZNY KALENDARZ WIELOKOLUMNOWY Z BLOKOWANIEM REZERWACJI
   // =========================================================================
   Widget _buildStep2CalendarGrid() {
     if (_selectedSalonId == null) return const SizedBox();
@@ -236,113 +236,158 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
         int openInMinutes = (int.tryParse(openParts[0]) ?? 8) * 60 + (int.tryParse(openParts[1]) ?? 0);
         int closeInMinutes = (int.tryParse(closeParts[0]) ?? 16) * 60 + (int.tryParse(closeParts[1]) ?? 0);
 
+        final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
+
+        // --- ZMIANA: Dodajemy strumień pobierający rezerwacje tego salonu na wybrany dzień ---
         return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: _selectedSalonId).snapshots(),
-          builder: (context, empSnapshot) {
-            if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
-            final employees = empSnapshot.data!.docs;
+          stream: FirebaseFirestore.instance
+              .collection('appointments')
+              .where('salonId', isEqualTo: _selectedSalonId)
+              .where('date', isEqualTo: formattedDateStr)
+              .snapshots(),
+          builder: (context, appointmentsSnapshot) {
+            if (!appointmentsSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
 
-            return Column(
-              children: [
-                // Suwak daty (Lokalny widżet skopiowany funkcjonalnie)
-                Container(
-                  height: 90, color: Colors.white,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal, itemCount: 30,
-                    itemBuilder: (context, index) {
-                      final date = DateTime.now().add(Duration(days: index));
-                      final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
-                      final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedDate = date),
-                        child: Container(
-                          width: 65, margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-                          decoration: BoxDecoration(color: isSelected ? Colors.pinkAccent : const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(16)),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(daysOfWeek[date.weekday % 7], style: TextStyle(fontSize: 12, color: isSelected ? Colors.white70 : Colors.grey)),
-                              const SizedBox(height: 4),
-                              Text(date.day.toString(), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.black87)),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+            final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.data!.docs;
 
-                // Lista imion stylistek
-                if (employees.isNotEmpty)
-                  Container(
-                    decoration: BoxDecoration(color: Colors.grey[100], border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1))),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 60),
-                        ...employees.map((emp) {
-                          final eData = emp.data() as Map<String, dynamic>;
-                          return Expanded(
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: _selectedSalonId).snapshots(),
+              builder: (context, empSnapshot) {
+                if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+                final employees = empSnapshot.data!.docs;
+
+                return Column(
+                  children: [
+                    // Suwak wyboru daty
+                    Container(
+                      height: 90, color: Colors.white,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal, itemCount: 30,
+                        itemBuilder: (context, index) {
+                          final date = DateTime.now().add(Duration(days: index));
+                          final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
+                          final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
+                          return GestureDetector(
+                            onTap: () => setState(() => _selectedDate = date),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10), alignment: Alignment.center,
-                              decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5))),
-                              child: Text(eData['firstName'] ?? 'Stylistka', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent), overflow: TextOverflow.ellipsis),
+                              width: 65, margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                              decoration: BoxDecoration(color: isSelected ? Colors.pinkAccent : const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(16)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(daysOfWeek[date.weekday % 7], style: TextStyle(fontSize: 12, color: isSelected ? Colors.white70 : Colors.grey)),
+                                  const SizedBox(height: 4),
+                                  Text(date.day.toString(), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.black87)),
+                                ],
+                              ),
                             ),
                           );
-                        }),
-                      ],
+                        },
+                      ),
                     ),
-                  ),
 
-                // Siatka 15-minutowych slotów
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: 56,
-                    itemBuilder: (context, index) {
-                      int currentMinutes = (7 * 60) + (index * 15);
-                      int hour = currentMinutes ~/ 60;
-                      int minute = currentMinutes % 60;
-                      String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
-                      bool isSlotClosed = isDayClosed || currentMinutes < openInMinutes || currentMinutes >= closeInMinutes;
-                      bool isFullHour = minute == 0;
-
-                      return Container(
-                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5))),
+                    // Lista imion stylistek
+                    if (employees.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(color: Colors.grey[100], border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1))),
                         child: Row(
                           children: [
-                            Container(
-                              width: 60, height: 50, alignment: Alignment.center,
-                              color: isSlotClosed ? Colors.grey[200] : Colors.white,
-                              child: Text(formattedTime, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 12)),
-                            ),
+                            const SizedBox(width: 60),
                             ...employees.map((emp) {
+                              final eData = emp.data() as Map<String, dynamic>;
                               return Expanded(
                                 child: Container(
-                                  height: 50,
-                                  decoration: BoxDecoration(color: isSlotClosed ? Colors.grey[150] : Colors.white, border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5))),
-                                  child: InkWell(
-                                    onTap: isSlotClosed
-                                        ? null
-                                        : () {
-                                      final eData = emp.data() as Map<String, dynamic>;
-                                      setState(() {
-                                        _selectedEmployeeId = emp.id;
-                                        _selectedEmployeeName = eData['firstName'] ?? 'Stylistka';
-                                        _selectedTime = formattedTime;
-                                        _currentStep = 3; // Przerzucamy do wyboru usługi
-                                      });
-                                    },
-                                    child: isSlotClosed && isFullHour ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26)) : const SizedBox.expand(),
-                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 10), alignment: Alignment.center,
+                                  decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5))),
+                                  child: Text(eData['firstName'] ?? 'Stylistka', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent), overflow: TextOverflow.ellipsis),
                                 ),
                               );
                             }),
                           ],
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                      ),
+
+                    // Siatka 15-minutowych slotów
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: 56,
+                        itemBuilder: (context, index) {
+                          int currentMinutes = (7 * 60) + (index * 15);
+                          int hour = currentMinutes ~/ 60;
+                          int minute = currentMinutes % 60;
+                          String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
+                          bool isSlotClosed = isDayClosed || currentMinutes < openInMinutes || currentMinutes >= closeInMinutes;
+                          bool isFullHour = minute == 0;
+
+                          return Container(
+                            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5))),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 60, height: 55, alignment: Alignment.center,
+                                  color: isSlotClosed ? Colors.grey[200] : Colors.white,
+                                  child: Text(formattedTime, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 12)),
+                                ),
+                                ...employees.map((emp) {
+                                  final String empId = emp.id;
+
+                                  // --- NOWOŚĆ: Sprawdzamy czy ten termin jest już zarezerwowany ---
+                                  bool isAlreadyBooked = false;
+                                  for (var appDoc in activeAppointments) {
+                                    final d = appDoc.data() as Map<String, dynamic>;
+                                    if (d['employeeId'] == empId && d['time'] == formattedTime) {
+                                      isAlreadyBooked = true;
+                                      break;
+                                    }
+                                  }
+
+                                  // Łączymy powody zablokowania: albo salon zamknięty, albo termin już zajęty
+                                  bool shouldBlock = isSlotClosed || isAlreadyBooked;
+
+                                  return Expanded(
+                                    child: Container(
+                                      height: 55,
+                                      decoration: BoxDecoration(
+                                        color: isAlreadyBooked
+                                            ? Colors.red[50] // Czerwonawe/delikatne tło dla zajętego terminu
+                                            : (isSlotClosed ? Colors.grey[150] : Colors.white),
+                                        border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5)),
+                                      ),
+                                      child: InkWell(
+                                        onTap: shouldBlock
+                                            ? null // Blokada kliknięcia
+                                            : () {
+                                          final eData = emp.data() as Map<String, dynamic>;
+                                          setState(() {
+                                            _selectedEmployeeId = emp.id;
+                                            _selectedEmployeeName = eData['firstName'] ?? 'Stylistka';
+                                            _selectedTime = formattedTime;
+                                            _currentStep = 3;
+                                          });
+                                        },
+                                        child: isAlreadyBooked
+                                            ? const Center(
+                                          child: Text(
+                                            'Zajęte',
+                                            style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w500),
+                                          ),
+                                        )
+                                            : (isSlotClosed && isFullHour
+                                            ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26))
+                                            : const SizedBox.expand()),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -361,7 +406,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Podsumowanie wybranego terminu
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.pink[50], borderRadius: BorderRadius.circular(16)),
@@ -431,7 +475,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     );
   }
 
-  // OSTATECZNY ZAPIS WIZYTY DO BAZY FIRESTORE
   Future<void> _confirmAppointment(String clientUid, String clientName, String sName, double sPrice, int sDuration) async {
     showDialog(
       context: context, barrierDismissible: false,
@@ -441,7 +484,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     try {
       final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
 
-      // Tworzymy dokument rezerwacji
       await FirebaseFirestore.instance.collection('appointments').add({
         'salonId': _selectedSalonId,
         'salonName': _selectedSalonName,
@@ -458,9 +500,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
       });
 
       if (mounted) {
-        Navigator.pop(context); // Zamknij kręciołek ładowania
-
-        // Wyświetlenie sukcesu i całkowity reset kreatora do kroku 1
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Rezerwacja udana! Zapisaną Cię na $sName.'), backgroundColor: Colors.green),
         );
@@ -471,7 +511,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu wizyty: $e'), backgroundColor: Colors.redAccent));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu: $e'), backgroundColor: Colors.redAccent));
       }
     }
   }
