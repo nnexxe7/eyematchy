@@ -283,73 +283,86 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
   }
 
   Widget _buildSalonCreator() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.storefront_outlined, size: 100, color: Colors.deepPurple),
-            const SizedBox(height: 24),
-            const Text('Stwórz profil swojego salonu', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text('Podaj nazwę oraz dokładny adres, aby wygenerować unikalny identyfikator i zacząć zapraszać pracownice.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.grey)),
-            const SizedBox(height: 32),
-            TextField(
-                controller: _salonNameController,
-                decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.edit_note, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                }
+    return Scaffold(
+      // Bezpieczne tło chroniące przed klawiaturą
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 20),
+              const Icon(Icons.storefront_outlined, size: 100, color: Colors.deepPurple),
+              const SizedBox(height: 24),
+              const Text('Stwórz profil swojego salonu', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              const Text('Podaj nazwę oraz dokładny adres, aby wygenerować unikalny identyfikator i zacząć zapraszać pracownice.', textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey)),
+              const SizedBox(height: 32),
 
-                List<DropdownMenuItem<String>> cityItems = [];
-                if (snapshot.hasData) {
-                  for (var doc in snapshot.data!.docs) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
-                  }
-                }
-
-                return DropdownButtonFormField<String>(
-                  value: _selectedCityId,
-                  items: cityItems,
-                  onChanged: (value) => setState(() => _selectedCityId = value),
-                  decoration: InputDecoration(labelText: 'Wybierz Miasto', prefixIcon: const Icon(Icons.location_city_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
-                  hint: const Text('Wybierz miasto z listy'),
-                  validator: (value) => value == null ? 'To pole jest wymagane' : null,
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(controller: _salonStreetController, decoration: InputDecoration(labelText: 'Ulica', prefixIcon: const Icon(Icons.add_location_alt_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 1,
-                  child: TextField(controller: _salonNumberController, decoration: InputDecoration(labelText: 'Nr lokalu / bud.', border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: _isCreating ? null : _createSalon,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                child: _isCreating ? const CircularProgressIndicator(color: Colors.white) : const Text('Stwórz i przejdź do panelu', style: TextStyle(fontSize: 18)),
+              // Pole 1: Nazwa Salonu
+              TextField(
+                  controller: _salonNameController,
+                  decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.edit_note, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+
+              // Pole 2: Dropdown Miast
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                  }
+
+                  List<DropdownMenuItem<String>> cityItems = [];
+                  if (snapshot.hasData) {
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
+                    }
+                  }
+
+                  return DropdownButtonFormField<String>(
+                    value: _selectedCityId,
+                    items: cityItems,
+                    onChanged: (value) => setState(() => _selectedCityId = value),
+                    decoration: InputDecoration(labelText: 'Wybierz Miasto', prefixIcon: const Icon(Icons.location_city_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+                    hint: const Text('Wybierz miasto z listy'),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Pole 3 i 4: Ulica i Numer
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(controller: _salonStreetController, decoration: InputDecoration(labelText: 'Ulica', prefixIcon: const Icon(Icons.add_location_alt_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: TextField(controller: _salonNumberController, decoration: InputDecoration(labelText: 'Nr lokalu', border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+
+              // Przycisk zatwierdzenia
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isCreating ? null : _createSalon,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                  child: _isCreating ? const CircularProgressIndicator(color: Colors.white) : const Text('Stwórz i przejdź do panelu', style: TextStyle(fontSize: 18)),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -606,7 +619,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                     return Container(
                                       // USUNIĘTO BORDER STĄD, ABY NIE PRZECINAŁ WIZYT!
-                                      color: Colors.transparent,
+                                      color: Colors.white,
                                       child: Row(
                                         children: [
                                           // Kolumna z godziną (lewa strona)
@@ -701,18 +714,56 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                     mainAxisAlignment: MainAxisAlignment.center,
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      Text(
-                                                        appointmentData['clientName'] ?? 'Klient',
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                                      // --- LINIA 1: GODZINY WYKONANIA ZABIEGU ---
+                                                      Builder(
+                                                        builder: (context) {
+                                                          List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
+                                                          int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                          int duration = appointmentData['duration'] ?? 30;
+                                                          int endMin = startMin + duration;
+
+                                                          String endHour = (endMin ~/ 60).toString();
+                                                          String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                          String formattedEndTime = "$endHour:$endMinute";
+
+                                                          return Text(
+                                                            "${appointmentData['time']} - $formattedEndTime",
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              color: Colors.white.withOpacity(0.85),
+                                                              fontSize: 9,
+                                                              fontWeight: FontWeight.w400,
+                                                            ),
+                                                          );
+                                                        },
                                                       ),
                                                       const SizedBox(height: 1),
+
+                                                      Expanded(
+                                                        child: Container(
+                                                          alignment: Alignment.centerLeft,
+                                                          child: Text(
+                                                            appointmentData['clientName'] ?? 'Klient',
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(
+                                                              color: Colors.white,
+                                                              fontWeight: FontWeight.bold,
+                                                              fontSize: 11,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+
                                                       Text(
                                                         appointmentData['serviceName'] ?? 'Usługa',
                                                         maxLines: 1,
                                                         overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                                        style: const TextStyle(
+                                                          color: Colors.white70,
+                                                          fontSize: 9,
+                                                        ),
                                                       ),
                                                     ],
                                                   )

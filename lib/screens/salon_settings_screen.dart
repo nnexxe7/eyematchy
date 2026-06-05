@@ -485,47 +485,87 @@ class BusinessDayRow extends StatelessWidget {
       }
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+      decoration: BoxDecoration(
+        color: isClosed ? Colors.grey[50] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!, width: 1),
+      ),
       child: Row(
         children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              dayName,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: isClosed ? Colors.grey : Colors.black87,
+          // 🏷️ LEWA STRONA: Nazwa dnia i status pod spodem
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                dayName,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: isClosed ? Colors.grey[600] : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                !isClosed ? 'Otwarte' : 'Zamknięte',
+                style: TextStyle(
+                  color: !isClosed ? Colors.green[700] : Colors.redAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+
+          const Spacer(),
+
+          // ⏱️ PRAWA STRONA: Wybór godzin lub informacja o zamknięciu
+          if (!isClosed) ...[
+            TextButton(
+              onPressed: () => pickTime(context, true),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.deepPurple[50],
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                openTime,
+                style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 14),
               ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+              child: Text('do', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+            ),
+            TextButton(
+              onPressed: () => pickTime(context, false),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.deepPurple[50],
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                closeTime,
+                style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          // 🔲 CHECKBOX na samym końcu rzędu
           Checkbox(
             value: !isClosed,
             activeColor: Colors.deepPurple,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
             onChanged: (val) {
               final newData = Map<String, dynamic>.from(dayData);
               newData['1_closed'] = val == false;
               onChanged(newData);
             },
           ),
-          Text(
-            !isClosed ? 'Otwarte' : 'Zamknięte',
-            style: TextStyle(color: !isClosed ? Colors.green : Colors.redAccent, fontSize: 13),
-          ),
-          const Spacer(),
-          if (!isClosed) ...[
-            TextButton(
-              onPressed: () => pickTime(context, true),
-              style: TextButton.styleFrom(backgroundColor: Colors.grey[100]),
-              child: Text(openTime, style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
-            ),
-            const Text(' do '),
-            TextButton(
-              onPressed: () => pickTime(context, false),
-              style: TextButton.styleFrom(backgroundColor: Colors.grey[100]),
-              child: Text(closeTime, style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
-            ),
-          ],
         ],
       ),
     );
