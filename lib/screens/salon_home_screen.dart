@@ -284,7 +284,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
   Widget _buildSalonCreator() {
     return Scaffold(
-      // Bezpieczne tło chroniące przed klawiaturą
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
@@ -299,14 +298,12 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               const Text('Podaj nazwę oraz dokładny adres, aby wygenerować unikalny identyfikator i zacząć zapraszać pracownice.', textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey)),
               const SizedBox(height: 32),
 
-              // Pole 1: Nazwa Salonu
               TextField(
                   controller: _salonNameController,
                   decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.edit_note, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)))
               ),
               const SizedBox(height: 16),
 
-              // Pole 2: Dropdown Miast
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
                 builder: (context, snapshot) {
@@ -333,7 +330,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               ),
               const SizedBox(height: 16),
 
-              // Pole 3 i 4: Ulica i Numer
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -350,7 +346,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               ),
               const SizedBox(height: 32),
 
-              // Przycisk zatwierdzenia
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -544,7 +539,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                   final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
 
-                  // Pobieramy stream aktualnych wizyt dla wybranego dnia
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('appointments')
@@ -568,7 +562,27 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           }
 
-                          final employees = empSnapshot.data?.docs ?? [];
+                          // ---🧠 SORTOWANIE NAGŁÓWKÓW SIATKI KALENDARZA ---
+                          final List<QueryDocumentSnapshot> employees = List.from(empSnapshot.data?.docs ?? []);
+                          employees.sort((a, b) {
+                            final dataA = a.data() as Map<String, dynamic>;
+                            final dataB = b.data() as Map<String, dynamic>;
+
+                            bool isOwnerA = dataA['salonRole'] == 'owner';
+                            bool isOwnerB = dataB['salonRole'] == 'owner';
+
+                            if (isOwnerA && !isOwnerB) return -1;
+                            if (!isOwnerA && isOwnerB) return 1;
+
+                            String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
+                            String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
+                            int compareNames = nameA.compareTo(nameB);
+                            if (compareNames != 0) return compareNames;
+
+                            String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
+                            String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
+                            return lastNameA.compareTo(lastNameB);
+                          });
 
                           return Column(
                             children: [
@@ -618,16 +632,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                     bool isFullHour = minute == 0;
 
                                     return Container(
-                                      // USUNIĘTO BORDER STĄD, ABY NIE PRZECINAŁ WIZYT!
                                       color: Colors.white,
                                       child: Row(
                                         children: [
-                                          // Kolumna z godziną (lewa strona)
                                           Container(
                                             width: 60, height: 55, alignment: Alignment.center,
                                             decoration: BoxDecoration(
                                               color: isSlotClosed ? Colors.grey[200] : Colors.white,
-                                              // Kolumna godziny zachowuje standardowe linie podziału
                                               border: Border(
                                                 bottom: BorderSide(
                                                   color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
@@ -645,7 +656,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                             ),
                                           ),
 
-                                          // Kolumny pracowników
                                           ...employees.map((emp) {
                                             final String empId = emp.id;
 
@@ -671,9 +681,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                             }
 
                                             bool hasBooking = appointmentData != null;
-
-                                            // KLUCZOWY WARUNEK: Rysujemy dolną linię tylko wtedy, gdy NIE ma rezerwacji,
-                                            // ALBO gdy jest to dokładnie ostatni kwadrans (koniec) danej rezerwacji.
                                             bool drawBottomLine = !hasBooking || isEndOfBooking;
 
                                             return Expanded(
@@ -681,20 +688,17 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                 height: 55,
                                                 decoration: BoxDecoration(
                                                   color: hasBooking
-                                                      ? Colors.deepPurple // Idealnie lity fiolet na całej komórce siatki
+                                                      ? Colors.deepPurple
                                                       : (isSlotClosed ? Colors.grey[150] : Colors.white),
                                                   border: Border(
                                                     left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                                    // Dynamiczna linia dolna komórki
                                                     bottom: drawBottomLine
                                                         ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                                        : BorderSide.none, // Ukrywa linię wewnątrz trwającej wizyty!
+                                                        : BorderSide.none,
                                                   ),
                                                 ),
                                                 child: hasBooking
                                                     ? Container(
-                                                  // Marginesy tylko z lewej i prawej, żeby odkleić wizyty od innych pracowników.
-                                                  // Margines górny i dolny aktywuje się TYLKO na krańcach całej wizyty.
                                                   margin: EdgeInsets.only(
                                                     left: 3,
                                                     right: 3,
@@ -714,7 +718,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                     mainAxisAlignment: MainAxisAlignment.center,
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      // --- LINIA 1: GODZINY WYKONANIA ZABIEGU ---
                                                       Builder(
                                                         builder: (context) {
                                                           List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
@@ -805,7 +808,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 },
               ),
 
-              // TAB 2: ZESPÓŁ
+              // TAB 2: ZESPÓŁ (POSORTOWANY WŁAŚCICIEL -> ALFABETYCZNIE STYLISTKI)
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -831,10 +834,33 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Text("Brak przypisanych pracowników.");
+
+                          // ---🧠 SORTOWANIE LISTY ZESPOŁU W ZAKŁADCE 2 ---
+                          List<QueryDocumentSnapshot> employeeDocs = List.from(snapshot.data!.docs);
+                          employeeDocs.sort((a, b) {
+                            final dataA = a.data() as Map<String, dynamic>;
+                            final dataB = b.data() as Map<String, dynamic>;
+
+                            bool isOwnerA = dataA['salonRole'] == 'owner';
+                            bool isOwnerB = dataB['salonRole'] == 'owner';
+
+                            if (isOwnerA && !isOwnerB) return -1;
+                            if (!isOwnerA && isOwnerB) return 1;
+
+                            String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
+                            String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
+                            int compareNames = nameA.compareTo(nameB);
+                            if (compareNames != 0) return compareNames;
+
+                            String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
+                            String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
+                            return lastNameA.compareTo(lastNameB);
+                          });
+
                           return ListView.builder(
-                            itemCount: snapshot.data!.docs.length,
+                            itemCount: employeeDocs.length,
                             itemBuilder: (context, index) {
-                              final employee = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                              final employee = employeeDocs[index].data() as Map<String, dynamic>;
                               final String firstName = employee['firstName'] ?? 'Nieznane';
                               final String lastName = employee['lastName'] ?? 'Imię';
                               final String email = employee['email'] ?? '';

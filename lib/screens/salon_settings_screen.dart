@@ -414,10 +414,39 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                     stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: widget.userData['salonId']).snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+
+                      // Kopiujemy listę dokumentów, aby móc ją swobodnie posortować
+                      List<QueryDocumentSnapshot> employeesDocs = List.from(snapshot.data!.docs);
+
+                      // --- 🧠 LOGIKA SORTOWANIA ---
+                      employeesDocs.sort((a, b) {
+                        final dataA = a.data() as Map<String, dynamic>;
+                        final dataB = b.data() as Map<String, dynamic>;
+
+                        bool isOwnerA = dataA['salonRole'] == 'owner';
+                        bool isOwnerB = dataB['salonRole'] == 'owner';
+
+                        // 1. Jeśli jeden z nich to owner, wypychamy go na początek
+                        if (isOwnerA && !isOwnerB) return -1;
+                        if (!isOwnerA && isOwnerB) return 1;
+
+                        // 2. Jeśli obaj mają tę samą rolę (stylistki), sortujemy alfabetycznie po imieniu
+                        String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
+                        String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
+
+                        int compareNames = nameA.compareTo(nameB);
+                        if (compareNames != 0) return compareNames;
+
+                        // 3. Jeśli imiona są identyczne, dodatkowo sortujemy po nazwisku
+                        String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
+                        String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
+                        return lastNameA.compareTo(lastNameB);
+                      });
+
                       return ListView.builder(
-                        itemCount: snapshot.data!.docs.length,
+                        itemCount: employeesDocs.length,
                         itemBuilder: (context, index) {
-                          final doc = snapshot.data!.docs[index];
+                          final doc = employeesDocs[index];
                           final employee = doc.data() as Map<String, dynamic>;
                           final String fullName = "${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}".trim();
                           final bool isMeOwner = employee['salonRole'] == 'owner';
@@ -425,7 +454,10 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
-                              leading: CircleAvatar(backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50], child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent)),
+                              leading: CircleAvatar(
+                                  backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50],
+                                  child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent)
+                              ),
                               title: Text(fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(isMeOwner ? "Właściciel (Ty)" : (employee['email'] ?? '')),
                               trailing: isMeOwner ? const SizedBox() : IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), onPressed: () => _fireEmployee(doc.id, fullName)),

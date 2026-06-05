@@ -238,7 +238,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
         final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
 
-        // --- ZMIANA: Dodajemy strumień pobierający rezerwacje tego salonu na wybrany dzień ---
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('appointments')
@@ -254,11 +253,34 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: _selectedSalonId).snapshots(),
               builder: (context, empSnapshot) {
                 if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
-                final employees = empSnapshot.data!.docs;
+
+                // --- 🧠 LOGIKA SORTOWANIA PRACOWNIKÓW DLA KLIENTEK ---
+                final List<QueryDocumentSnapshot> employees = List.from(empSnapshot.data!.docs);
+                employees.sort((a, b) {
+                  final dataA = a.data() as Map<String, dynamic>;
+                  final dataB = b.data() as Map<String, dynamic>;
+
+                  bool isOwnerA = dataA['salonRole'] == 'owner';
+                  bool isOwnerB = dataB['salonRole'] == 'owner';
+
+                  // Właściciel na pierwsze miejsce
+                  if (isOwnerA && !isOwnerB) return -1;
+                  if (!isOwnerA && isOwnerB) return 1;
+
+                  // Stylistki alfabetycznie po imieniu
+                  String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
+                  String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
+                  int compareNames = nameA.compareTo(nameB);
+                  if (compareNames != 0) return compareNames;
+
+                  // Sortowanie po nazwisku w przypadku powtórzeń imion
+                  String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
+                  String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
+                  return lastNameA.compareTo(lastNameB);
+                });
 
                 return Column(
                   children: [
-                    // Suwak wyboru daty
                     Container(
                       height: 90, color: Colors.white,
                       child: ListView.builder(
@@ -286,7 +308,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       ),
                     ),
 
-                    // Lista imion stylistek
                     if (employees.isNotEmpty)
                       Container(
                         decoration: BoxDecoration(color: Colors.grey[100], border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1))),
@@ -307,8 +328,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         ),
                       ),
 
-                    // Siatka 15-minutowych slotów
-                    // Siatka 15-minutowych slotów
                     Expanded(
                       child: ListView.builder(
                         itemCount: 56,
@@ -321,10 +340,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           bool isFullHour = minute == 0;
 
                           return Container(
-                            color: Colors.transparent, // Brak obramowania na poziomie wiersza
+                            color: Colors.transparent,
                             child: Row(
                               children: [
-                                // Kolumna godziny
                                 Container(
                                   width: 60, height: 55, alignment: Alignment.center,
                                   decoration: BoxDecoration(
@@ -339,7 +357,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   child: Text(formattedTime, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 12)),
                                 ),
 
-                                // Kolumny pracowników
                                 ...employees.map((emp) {
                                   final String empId = emp.id;
 
@@ -365,7 +382,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   }
 
                                   bool shouldBlock = isSlotClosed || isAlreadyBooked;
-                                  // Rysujemy dolną linię tylko jeśli to nie jest rezerwacja, lub jest to jej koniec
                                   bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
 
                                   return Expanded(
