@@ -599,19 +599,34 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                       const SizedBox(width: 60),
                                       ...employees.map((emp) {
                                         final eData = emp.data() as Map<String, dynamic>;
-                                        final String name = eData['firstName'] ?? 'Stylistka';
+                                        final String firstName = eData['firstName'] ?? 'Stylistka';
+                                        final String lastName = eData['lastName'] ?? '';
+
                                         return Expanded(
                                           child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            padding: const EdgeInsets.symmetric(vertical: 6),
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
                                               border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
                                             ),
-                                            child: Text(
-                                              name,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                Text(
+                                                  firstName,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
+                                                ),
+                                                if (lastName.isNotEmpty)
+                                                  Text(
+                                                    lastName,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.deepPurple[400]),
+                                                  ),
+                                              ],
                                             ),
                                           ),
                                         );
@@ -835,7 +850,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Text("Brak przypisanych pracowników.");
 
-                          // ---🧠 SORTOWANIE LISTY ZESPOŁU W ZAKŁADCE 2 ---
                           List<QueryDocumentSnapshot> employeeDocs = List.from(snapshot.data!.docs);
                           employeeDocs.sort((a, b) {
                             final dataA = a.data() as Map<String, dynamic>;

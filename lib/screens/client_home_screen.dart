@@ -263,17 +263,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   bool isOwnerA = dataA['salonRole'] == 'owner';
                   bool isOwnerB = dataB['salonRole'] == 'owner';
 
-                  // Właściciel na pierwsze miejsce
                   if (isOwnerA && !isOwnerB) return -1;
                   if (!isOwnerA && isOwnerB) return 1;
 
-                  // Stylistki alfabetycznie po imieniu
                   String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
                   String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
                   int compareNames = nameA.compareTo(nameB);
                   if (compareNames != 0) return compareNames;
 
-                  // Sortowanie po nazwisku w przypadku powtórzeń imion
                   String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
                   String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
                   return lastNameA.compareTo(lastNameB);
@@ -308,6 +305,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       ),
                     ),
 
+                    // --- ZMODYFIKOWANY NAGŁÓWEK KOLUMN: DWULINIOWY UKŁAD ---
                     if (employees.isNotEmpty)
                       Container(
                         decoration: BoxDecoration(color: Colors.grey[100], border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1))),
@@ -316,11 +314,33 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                             const SizedBox(width: 60),
                             ...employees.map((emp) {
                               final eData = emp.data() as Map<String, dynamic>;
+                              final String firstName = eData['firstName'] ?? 'Stylistka';
+                              final String lastName = eData['lastName'] ?? '';
+
                               return Expanded(
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 10), alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
+                                  alignment: Alignment.center,
                                   decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5))),
-                                  child: Text(eData['firstName'] ?? 'Stylistka', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent), overflow: TextOverflow.ellipsis),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                          firstName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent)
+                                      ),
+                                      if (lastName.isNotEmpty)
+                                        Text(
+                                            lastName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.pinkAccent.withOpacity(0.8))
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               );
                             }),
