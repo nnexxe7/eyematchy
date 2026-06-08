@@ -10,8 +10,8 @@ import 'screens/salon_home_screen.dart';
 import 'screens/invitations_screen.dart';
 import 'screens/salon_settings_screen.dart';
 import 'screens/client_home_screen.dart';
-import 'package:eyematchy/screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
+import 'screens/eye_match_screen.dart'; // <-- DODANY IMPORT
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,6 +105,7 @@ class AppDrawer extends StatelessWidget {
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final roles = List<String>.from(userData['roles'] ?? []);
@@ -124,6 +125,21 @@ class AppDrawer extends StatelessWidget {
             accountName: Text('${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'),
             accountEmail: Text(userData['email'] ?? ''),
           ),
+
+          // --- 👁️ NOWA ZAKŁADKA EYE-MATCH AI (WIDOCZNA DLA KAŻDEGO) ---
+          ListTile(
+            leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
+            title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
+            subtitle: const Text('Analiza kształtu oczu i dobór rzęs', style: TextStyle(fontSize: 11)),
+            onTap: () {
+              Navigator.pop(context); // Zamyka drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
+              );
+            },
+          ),
+          const Divider(height: 1),
 
           if (hasBothRoles) ...[
             if (currentRole == 'salon')
@@ -189,7 +205,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
 
-          // Przycisk Wyloguj się (Zamyka całe menu bocznego panelu)
+          // Przycisk Wyloguj się
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text('Wyloguj się', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
