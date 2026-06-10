@@ -350,6 +350,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                     Expanded(
                       child: ListView.builder(
+                        // 🚀 POPRAWKA 1: Dodałem padding u góry pod bezpieczny bufor wyświetlania godziny "7:00"
+                        padding: const EdgeInsets.only(top: 12, bottom: 24),
                         itemCount: 56,
                         itemBuilder: (context, index) {
                           int currentMinutes = (7 * 60) + (index * 15);
@@ -360,91 +362,114 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           bool isFullHour = minute == 0;
 
                           return Container(
-                            color: Colors.transparent,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 60, height: 55, alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: isSlotClosed ? Colors.grey[200] : Colors.white,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
-                                        width: isFullHour ? 0.8 : 0.5,
-                                      ),
+                            color: Colors.white,
+                            // 🚀 POPRAWKA 2: Dodany ClipRect z wyłączonym obcinaniem dla swobodnego unoszenia się godzin
+                            child: ClipRect(
+                              clipBehavior: Clip.none,
+                              child: Row(
+                                children: [
+                                  // --- 🛠️ POPRAWKA 3: KOLUMNA GODZIN ZAWSZE BIAŁA I POZYCJONOWANA TOP: -6 ---
+                                  Container(
+                                    width: 60,
+                                    height: 55,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                    ),
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          top: -6,
+                                          child: Container(
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              formattedTime,
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                                color: isSlotClosed ? Colors.grey[400] : Colors.black87,
+                                                fontSize: 11,
+                                                height: 1.0,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  child: Text(formattedTime, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 12)),
-                                ),
 
-                                ...employees.map((emp) {
-                                  final String empId = emp.id;
+                                  ...employees.map((emp) {
+                                    final String empId = emp.id;
 
-                                  bool isAlreadyBooked = false;
-                                  bool isStartOfBooking = false;
-                                  bool isEndOfBooking = false;
+                                    bool isAlreadyBooked = false;
+                                    bool isStartOfBooking = false;
+                                    bool isEndOfBooking = false;
 
-                                  for (var appDoc in activeAppointments) {
-                                    final d = appDoc.data() as Map<String, dynamic>;
-                                    if (d['employeeId'] != empId) continue;
+                                    for (var appDoc in activeAppointments) {
+                                      final d = appDoc.data() as Map<String, dynamic>;
+                                      if (d['employeeId'] != empId) continue;
 
-                                    List<String> timeParts = (d['time'] ?? '00:00').split(':');
-                                    int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                    int duration = d['duration'] ?? 30;
-                                    int appEnd = appStart + duration;
+                                      List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                      int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                      int duration = d['duration'] ?? 30;
+                                      int appEnd = appStart + duration;
 
-                                    if (currentMinutes >= appStart && currentMinutes < appEnd) {
-                                      isAlreadyBooked = true;
-                                      isStartOfBooking = (currentMinutes == appStart);
-                                      isEndOfBooking = (currentMinutes + 15 == appEnd);
-                                      break;
+                                      if (currentMinutes >= appStart && currentMinutes < appEnd) {
+                                        isAlreadyBooked = true;
+                                        isStartOfBooking = (currentMinutes == appStart);
+                                        isEndOfBooking = (currentMinutes + 15 == appEnd);
+                                        break;
+                                      }
                                     }
-                                  }
 
-                                  bool shouldBlock = isSlotClosed || isAlreadyBooked;
-                                  bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
+                                    bool shouldBlock = isSlotClosed || isAlreadyBooked;
+                                    bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
 
-                                  return Expanded(
-                                    child: Container(
-                                      height: 55,
-                                      decoration: BoxDecoration(
-                                        color: isAlreadyBooked
-                                            ? Colors.red[50]
-                                            : (isSlotClosed ? Colors.grey[150] : Colors.white),
-                                        border: Border(
-                                          left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                          bottom: drawBottomBorder
-                                              ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                              : BorderSide.none,
+                                    return Expanded(
+                                      child: Container(
+                                        height: 55,
+                                        // --- 🛠️ POPRAWKA 4: PRZENIESIENIE WYSZARZENIA WYŁĄCZNIE NA MATRYCĘ PRACOWNIKÓW ---
+                                        decoration: BoxDecoration(
+                                          color: isAlreadyBooked
+                                              ? Colors.red[50]
+                                              : (isSlotClosed ? Colors.grey[200]! : Colors.white), // Poprawione z Colors.grey[150]
+                                          border: Border(
+                                            left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                            bottom: drawBottomBorder
+                                                ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                                : BorderSide.none,
+                                          ),
+                                        ),
+                                        child: InkWell(
+                                          onTap: shouldBlock ? null : () {
+                                            final eData = emp.data() as Map<String, dynamic>;
+                                            setState(() {
+                                              _selectedEmployeeId = emp.id;
+                                              _selectedEmployeeName = eData['firstName'] ?? 'Stylistka';
+                                              _selectedTime = formattedTime;
+                                              _currentStep = 3;
+                                            });
+                                          },
+                                          child: isAlreadyBooked
+                                              ? Center(
+                                            child: isStartOfBooking
+                                                ? const Text(
+                                              'Zajęte',
+                                              style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                            )
+                                                : const SizedBox.shrink(),
+                                          )
+                                              : (isSlotClosed && isFullHour
+                                              ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26))
+                                              : const SizedBox.expand()),
                                         ),
                                       ),
-                                      child: InkWell(
-                                        onTap: shouldBlock ? null : () {
-                                          final eData = emp.data() as Map<String, dynamic>;
-                                          setState(() {
-                                            _selectedEmployeeId = emp.id;
-                                            _selectedEmployeeName = eData['firstName'] ?? 'Stylistka';
-                                            _selectedTime = formattedTime;
-                                            _currentStep = 3;
-                                          });
-                                        },
-                                        child: isAlreadyBooked
-                                            ? Center(
-                                          child: isStartOfBooking
-                                              ? const Text(
-                                            'Zajęte',
-                                            style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                                          )
-                                              : const SizedBox.shrink(),
-                                        )
-                                            : (isSlotClosed && isFullHour
-                                            ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26))
-                                            : const SizedBox.expand()),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ],
+                                    );
+                                  }),
+                                ],
+                              ),
                             ),
                           );
                         },

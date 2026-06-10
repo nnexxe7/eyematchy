@@ -562,14 +562,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           }
 
-                          // ---🧠 SORTOWANIE NAGŁÓWKÓW SIATKI KALENDARZA ---
                           final List<QueryDocumentSnapshot> employees = List.from(empSnapshot.data?.docs ?? []);
                           employees.sort((a, b) {
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'owner';
-                            bool isOwnerB = dataB['salonRole'] == 'owner';
+                            bool isOwnerA = dataA['salonRole'] == 'star';
+                            bool isOwnerB = dataB['salonRole'] == 'star';
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -637,6 +636,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                               Expanded(
                                 child: ListView.builder(
+                                  // 🚀 POPRAWKA: Dodałem padding u góry, tworząc bezpieczny bufor dla "7:00" na krawędzi nagłówka
+                                  padding: const EdgeInsets.only(top: 12, bottom: 24),
                                   itemCount: 56,
                                   itemBuilder: (context, index) {
                                     int currentMinutesFromDayStart = (7 * 60) + (index * 15);
@@ -648,167 +649,181 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                     return Container(
                                       color: Colors.white,
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 60, height: 55, alignment: Alignment.center,
-                                            decoration: BoxDecoration(
-                                              color: isSlotClosed ? Colors.grey[200] : Colors.white,
-                                              border: Border(
-                                                bottom: BorderSide(
-                                                  color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!,
-                                                  width: isFullHour ? 0.8 : 0.5,
-                                                ),
+                                      child: ClipRect(
+                                        clipBehavior: Clip.none,
+                                        child: Row(
+                                          children: [
+                                            // --- KONTENER GODZINY (W PEŁNI WIDOCZNY, BEZ LINII PRZECINAJĄCEJ) ---
+                                            Container(
+                                              width: 60,
+                                              height: 55,
+                                              decoration: const BoxDecoration(
+                                                color: Colors.white,
                                               ),
-                                            ),
-                                            child: Text(
-                                              formattedTime,
-                                              style: TextStyle(
-                                                fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                                color: isSlotClosed ? Colors.grey[400] : Colors.black87,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-
-                                          ...employees.map((emp) {
-                                            final String empId = emp.id;
-
-                                            Map<String, dynamic>? appointmentData;
-                                            bool isStartOfBooking = false;
-                                            bool isEndOfBooking = false;
-
-                                            for (var appDoc in activeAppointments) {
-                                              final d = appDoc.data() as Map<String, dynamic>;
-                                              if (d['employeeId'] != empId) continue;
-
-                                              List<String> timeParts = (d['time'] ?? '00:00').split(':');
-                                              int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                              int duration = d['duration'] ?? 30;
-                                              int appEnd = appStart + duration;
-
-                                              if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
-                                                appointmentData = d;
-                                                isStartOfBooking = (currentMinutesFromDayStart == appStart);
-                                                isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
-                                                break;
-                                              }
-                                            }
-
-                                            bool hasBooking = appointmentData != null;
-                                            bool drawBottomLine = !hasBooking || isEndOfBooking;
-
-                                            return Expanded(
-                                              child: Container(
-                                                height: 55,
-                                                decoration: BoxDecoration(
-                                                  color: hasBooking
-                                                      ? Colors.deepPurple
-                                                      : (isSlotClosed ? Colors.grey[150] : Colors.white),
-                                                  border: Border(
-                                                    left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                                    bottom: drawBottomLine
-                                                        ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                                        : BorderSide.none,
-                                                  ),
-                                                ),
-                                                child: hasBooking
-                                                    ? Container(
-                                                  margin: EdgeInsets.only(
-                                                    left: 3,
-                                                    right: 3,
-                                                    top: isStartOfBooking ? 3 : 0,
-                                                    bottom: isEndOfBooking ? 3 : 0,
-                                                  ),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.deepPurple,
-                                                    borderRadius: BorderRadius.vertical(
-                                                      top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                      bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
+                                              child: Stack(
+                                                clipBehavior: Clip.none,
+                                                children: [
+                                                  Positioned(
+                                                    left: 0,
+                                                    right: 0,
+                                                    top: -6,
+                                                    child: Container(
+                                                      alignment: Alignment.center,
+                                                      child: Text(
+                                                        formattedTime,
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(
+                                                          fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                                          color: isSlotClosed ? Colors.grey[400] : Colors.black87,
+                                                          fontSize: 11,
+                                                          height: 1.0,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
-                                                  child: isStartOfBooking
-                                                      ? Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Builder(
-                                                        builder: (context) {
-                                                          List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
-                                                          int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                          int duration = appointmentData['duration'] ?? 30;
-                                                          int endMin = startMin + duration;
+                                                ],
+                                              ),
+                                            ),
 
-                                                          String endHour = (endMin ~/ 60).toString();
-                                                          String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                          String formattedEndTime = "$endHour:$endMinute";
+                                            ...employees.map((emp) {
+                                              final String empId = emp.id;
 
-                                                          return Text(
-                                                            "${appointmentData['time']} - $formattedEndTime",
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              color: Colors.white.withOpacity(0.85),
-                                                              fontSize: 9,
-                                                              fontWeight: FontWeight.w400,
-                                                            ),
-                                                          );
-                                                        },
+                                              Map<String, dynamic>? appointmentData;
+                                              bool isStartOfBooking = false;
+                                              bool isEndOfBooking = false;
+
+                                              for (var appDoc in activeAppointments) {
+                                                final d = appDoc.data() as Map<String, dynamic>;
+                                                if (d['employeeId'] != empId) continue;
+
+                                                List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                                int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                int duration = d['duration'] ?? 30;
+                                                int appEnd = appStart + duration;
+
+                                                if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
+                                                  appointmentData = d;
+                                                  isStartOfBooking = (currentMinutesFromDayStart == appStart);
+                                                  isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
+                                                  break;
+                                                }
+                                              }
+
+                                              bool hasBooking = appointmentData != null;
+                                              bool drawBottomLine = !hasBooking || isEndOfBooking;
+
+                                              return Expanded(
+                                                child: Container(
+                                                  height: 55,
+                                                  decoration: BoxDecoration(
+                                                    color: hasBooking
+                                                        ? Colors.deepPurple
+                                                        : (isSlotClosed ? Colors.grey[200]! : Colors.white),
+                                                    border: Border(
+                                                      left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                                      bottom: drawBottomLine
+                                                          ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                                          : BorderSide.none,
+                                                    ),
+                                                  ),
+                                                  child: hasBooking
+                                                      ? Container(
+                                                    margin: EdgeInsets.only(
+                                                      left: 3,
+                                                      right: 3,
+                                                      top: isStartOfBooking ? 3 : 0,
+                                                      bottom: isEndOfBooking ? 3 : 0,
+                                                    ),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.deepPurple,
+                                                      borderRadius: BorderRadius.vertical(
+                                                        top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                        bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
                                                       ),
-                                                      const SizedBox(height: 1),
+                                                    ),
+                                                    child: isStartOfBooking
+                                                        ? Column(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Navigator.canPop(context) ? const SizedBox() : Builder(
+                                                          builder: (context) {
+                                                            List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
+                                                            int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                            int duration = appointmentData['duration'] ?? 30;
+                                                            int endMin = startMin + duration;
 
-                                                      Expanded(
-                                                        child: Container(
-                                                          alignment: Alignment.centerLeft,
-                                                          child: Text(
-                                                            appointmentData['clientName'] ?? 'Klient',
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: const TextStyle(
-                                                              color: Colors.white,
-                                                              fontWeight: FontWeight.bold,
-                                                              fontSize: 11,
+                                                            String endHour = (endMin ~/ 60).toString();
+                                                            String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                            String formattedEndTime = "$endHour:$endMinute";
+
+                                                            return Text(
+                                                              "${appointmentData['time']} - $formattedEndTime",
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(
+                                                                color: Colors.white.withOpacity(0.85),
+                                                                fontSize: 9,
+                                                                fontWeight: FontWeight.w400,
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                        const SizedBox(height: 1),
+
+                                                        Expanded(
+                                                          child: Container(
+                                                            alignment: Alignment.centerLeft,
+                                                            child: Text(
+                                                              appointmentData['clientName'] ?? 'Klient',
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(
+                                                                color: Colors.white,
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 11,
+                                                              ),
                                                             ),
                                                           ),
                                                         ),
-                                                      ),
 
-                                                      Text(
-                                                        appointmentData['serviceName'] ?? 'Usługa',
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(
-                                                          color: Colors.white70,
-                                                          fontSize: 9,
+                                                        Text(
+                                                          appointmentData['serviceName'] ?? 'Usługa',
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(
+                                                            color: Colors.white70,
+                                                            fontSize: 9,
+                                                          ),
                                                         ),
-                                                      ),
-                                                    ],
+                                                      ],
+                                                    )
+                                                        : const SizedBox.shrink(),
                                                   )
-                                                      : const SizedBox.shrink(),
-                                                )
-                                                    : InkWell(
-                                                  onTap: isSlotClosed ? null : () {
-                                                    final eData = emp.data() as Map<String, dynamic>;
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
-                                                        duration: const Duration(seconds: 1),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: isSlotClosed
-                                                      ? Center(
-                                                    child: isFullHour
-                                                        ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
-                                                        : const SizedBox(),
-                                                  )
-                                                      : const SizedBox.expand(),
+                                                      : InkWell(
+                                                    onTap: isSlotClosed ? null : () {
+                                                      final eData = emp.data() as Map<String, dynamic>;
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
+                                                          duration: const Duration(seconds: 1),
+                                                        ),
+                                                      );
+                                                    },
+                                                    child: isSlotClosed
+                                                        ? Center(
+                                                      child: isFullHour
+                                                          ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
+                                                          : const SizedBox(),
+                                                    )
+                                                        : const SizedBox.expand(),
+                                                  ),
                                                 ),
-                                              ),
-                                            );
-                                          }),
-                                        ],
+                                              );
+                                            }),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   },
@@ -823,7 +838,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 },
               ),
 
-              // TAB 2: ZESPÓŁ (POSORTOWANY WŁAŚCICIEL -> ALFABETYCZNIE STYLISTKI)
+              // TAB 2: ZESPÓŁ
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -855,8 +870,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'owner';
-                            bool isOwnerB = dataB['salonRole'] == 'owner';
+                            bool isOwnerA = dataA['salonRole'] == 'star';
+                            bool isOwnerB = dataB['salonRole'] == 'star';
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -878,7 +893,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                               final String firstName = employee['firstName'] ?? 'Nieznane';
                               final String lastName = employee['lastName'] ?? 'Imię';
                               final String email = employee['email'] ?? '';
-                              final bool empIsOwner = employee['salonRole'] == 'owner';
+                              final bool empIsOwner = employee['salonRole'] == 'star';
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: CircleAvatar(backgroundColor: empIsOwner ? Colors.deepPurple : Colors.purple[300], child: Icon(empIsOwner ? Icons.star : Icons.person, color: Colors.white)),
