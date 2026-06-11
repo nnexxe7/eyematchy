@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math; // 🚀 DODANY IMPORT (wymagany do obrotu lustrzanego)
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -24,7 +25,7 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
   // 2 - Wynik z przodu (Podgląd foto + punkty)
   // 3 - Zdjęcie z boku (Live)
   // 4 - Wynik z boku (Podgląd foto + punkty)
-  // 5 - Ekran końcowy / Podsumowanie
+  // 5 - Ekran końcowy / Podsumowanie AI
 
   XFile? _frontPhotoFile;
   XFile? _sidePhotoFile;
@@ -34,6 +35,8 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
 
   Size? _frontImageSize;
   Size? _sideImageSize;
+
+  EyeAnalysisResult? _analysisResult; // Przechowuje wynik diagnozy
 
   @override
   void initState() {
@@ -91,7 +94,18 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
       // 2. Dekodowanie wymiarów pliku graficznego
       final File imageFile = File(photo.path);
       final decodedImage = await decodeImageFromList(imageFile.readAsBytesSync());
-      final Size photoSize = Size(decodedImage.width.toDouble(), decodedImage.height.toDouble());
+
+      // 🚀 ROZWIĄZANIE PROBLEMU Z PROPORCJAMI (EXIF BUG):
+      // Aparaty w telefonach (nawet przy pionowym zdjęciu) zapisują na matrycy szerokość > wysokość.
+      // Aby nasza maska ML Kit i BoxFit nakładały się poprawnie, wymuszamy tu orientację pionową.
+      double imgW = decodedImage.width.toDouble();
+      double imgH = decodedImage.height.toDouble();
+      if (imgW > imgH) {
+        final temp = imgW;
+        imgW = imgH;
+        imgH = temp;
+      }
+      final Size photoSize = Size(imgW, imgH);
 
       // 3. Detekcja rysów twarzy przez Google ML Kit
       final inputImage = InputImage.fromFilePath(photo.path);
@@ -127,9 +141,49 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
   }
 
   void _goToStep5() {
+    if (_frontDetectedFaces.isNotEmpty && _sideDetectedFaces.isNotEmpty) {
+      _runAIAnalysis();
+    }
     setState(() {
       _currentStep = 5;
     });
+  }
+
+  void _runAIAnalysis() {
+    final frontFace = _frontDetectedFaces.first;
+    final sideFace = _sideDetectedFaces.first;
+
+    Offset getMinX(FaceContour? c) => c == null || c.points.isEmpty ? const Offset(0,0) : Offset(c.points.map((p) => p.x).reduce(math.min).toDouble(), c.points.map((p) => p.y).reduce(math.min).toDouble());
+    Offset getMaxX(FaceContour? c) => c == null || c.points.isEmpty ? const Offset(0,0) : Offset(c.points.map((p) => p.x).reduce(math.max).toDouble(), c.points.map((p) => p.y).reduce(math.min).toDouble());
+    Offset getMinY(FaceContour? c) => c == null || c.points.isEmpty ? const Offset(0,0) : Offset(c.points.first.x.toDouble(), c.points.map((p) => p.y).reduce(math.min).toDouble());
+    Offset getMaxY(FaceContour? c) => c == null || c.points.isEmpty ? const Offset(0,0) : Offset(c.points.first.x.toDouble(), c.points.map((p) => p.y).reduce(math.max).toDouble());
+    Offset getCenter(FaceContour? c) {
+      if (c == null || c.points.isEmpty) return const Offset(0,0);
+      double sumX = c.points.fold(0, (sum, p) => sum + p.x);
+      double sumY = c.points.fold(0, (sum, p) => sum + p.y);
+      return Offset(sumX / c.points.length, sumY / c.points.length);
+    }
+
+    final leftEyeFront = frontFace.contours[FaceContourType.leftEye];
+    final rightEyeFront = frontFace.contours[FaceContourType.rightEye];
+
+    final profileBrow = sideFace.contours[FaceContourType.leftEyebrowTop] ?? sideFace.contours[FaceContourType.rightEyebrowTop];
+    final profileEye = sideFace.contours[FaceContourType.leftEye] ?? sideFace.contours[FaceContourType.rightEye];
+    final profileCheek = sideFace.contours[FaceContourType.leftCheek] ?? sideFace.contours[FaceContourType.rightCheek];
+
+    _analysisResult = EyeMatchAnalyzer.analyze(
+      leftInnerCorner: getMinX(leftEyeFront),
+      leftOuterCorner: getMaxX(leftEyeFront),
+      leftTopPupil: getMinY(leftEyeFront),
+      leftBottomPupil: getMaxY(leftEyeFront),
+
+      rightInnerCorner: getMaxX(rightEyeFront),
+      rightOuterCorner: getMinX(rightEyeFront),
+
+      profileBrowRidge: getCenter(profileBrow),
+      profileEyeCenter: getCenter(profileEye),
+      profileCheekbone: getCenter(profileCheek),
+    );
   }
 
   void _resetWizard() {
@@ -141,6 +195,7 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
       _sideDetectedFaces = [];
       _frontImageSize = null;
       _sideImageSize = null;
+      _analysisResult = null;
     });
     _initializeCamera();
   }
@@ -213,15 +268,30 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
   }
 
   Widget _buildPhotoResultView(XFile photo, List<Face> faces, Size? originalPhotoSize, VoidCallback onNextPressed, String buttonText) {
+    // 🚀 ROZWIĄZANIE LUSTRZANEGO ODBICIA
+    // Zbudowanie fizycznego widżetu obrazka.
+    Widget imageWidget = Image.file(
+      File(photo.path),
+      fit: BoxFit.cover,
+    );
+
+    // Jeśli używamy przedniej kamery (selfie), obracamy zdjęcie wizualnie (Transform)
+    // żebyś widział na zdjęciu zrobionym dokładnie to samo, co widziałeś w podglądzie (lustro).
+    if (_selectedCameraIndex == 1) {
+      imageWidget = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.rotationY(math.pi),
+        child: imageWidget,
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.file(
-            File(photo.path),
-            fit: BoxFit.cover,
-          ),
+          // Renderuje obraz z nałożonym lustrem (jeśli to selfie)
+          imageWidget,
 
           if (faces.isNotEmpty && originalPhotoSize != null)
             Positioned.fill(
@@ -281,32 +351,92 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
     }
 
     if (_currentStep == 4 && _sidePhotoFile != null) {
-      return _buildPhotoResultView(_sidePhotoFile!, _sideDetectedFaces, _sideImageSize, _goToStep5, 'Zobacz podsumowanie');
+      return _buildPhotoResultView(_sidePhotoFile!, _sideDetectedFaces, _sideImageSize, _goToStep5, 'Analizuj twarz');
     }
 
     if (_currentStep == 5) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Analiza EyeMatch AI'), backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white, automaticallyImplyLeading: false),
-        body: Padding(
+        appBar: AppBar(title: const Text('Wynik EyeMatch AI'), backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white, automaticallyImplyLeading: false),
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.check_circle_outline, size: 80, color: Colors.green),
+              const Icon(Icons.auto_awesome, size: 64, color: Colors.pinkAccent),
+              const SizedBox(height: 16),
+              const Text('Diagnoza geometrii twarzy', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 24),
-              const Text('Analiza ukończona!', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const Text(
-                'Zapisaliśmy geometrię oka z frontu i profilu.\nW tym miejscu w kolejnym etapie wejdzie algorytm dopasowujący długość, skręt i układ rzęs.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.grey),
-              ),
-              const SizedBox(height: 40),
+
+              if (_analysisResult != null) ...[
+                Card(
+                  elevation: 0,
+                  color: Colors.grey[100],
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        _buildResultRow(Icons.remove_red_eye, "Kształt oka:", _analysisResult!.shape),
+                        const Divider(),
+                        _buildResultRow(Icons.compare_arrows, "Rozstaw:", _analysisResult!.spacing),
+                        const Divider(),
+                        _buildResultRow(Icons.rotate_right, "Kierunek (kąt):", _analysisResult!.tilt),
+                        const Divider(),
+                        _buildResultRow(Icons.line_weight, "Osadzenie:", _analysisResult!.depth),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                const Text('Idealny dobór rzęs:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Column(
+                              children: [
+                                const Text('STYLIZACJA', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text(_analysisResult!.lashStyle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.pinkAccent)),
+                              ],
+                            ),
+                            Container(width: 1, height: 40, color: Colors.grey[300]),
+                            Column(
+                              children: [
+                                const Text('SKRĘT', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text(_analysisResult!.lashCurl, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.pinkAccent)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.pink.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+                          child: Text(_analysisResult!.lashDescription, style: const TextStyle(fontSize: 13, height: 1.4, color: Colors.black87), textAlign: TextAlign.center),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                const Center(child: Text("Nie udało się przeprowadzić dokładnej analizy ze względu na niewyraźne rysy twarzy. Spróbuj ponownie.", textAlign: TextAlign.center)),
+              ],
+
+              const SizedBox(height: 32),
               ElevatedButton.icon(
                 onPressed: _resetWizard,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Rozpocznij analizę od nowa'),
+                label: const Text('Zrób nowe zdjęcia'),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ),
               const SizedBox(height: 12),
@@ -386,10 +516,25 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
       ),
     );
   }
+
+  Widget _buildResultRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(fontSize: 15, color: Colors.black87)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+        ],
+      ),
+    );
+  }
 }
 
 // =========================================================================
-// PAINTER: LOGIKA JEOMETRYCZNEGO DOPASOWANIA I MAPOWANIA NA FOTOGRAFII
+// PAINTER: LOGIKA GEOMETRYCZNEGO DOPASOWANIA I MAPOWANIA NA FOTOGRAFII
 // =========================================================================
 class StaticPhotoFacePainter extends CustomPainter {
   final List<Face> faces;
@@ -410,7 +555,6 @@ class StaticPhotoFacePainter extends CustomPainter {
       ..color = Colors.cyanAccent
       ..strokeWidth = 1.5;
 
-    // --- 📐 MATEMATYCZNE OBLICZENIA PROPORCJI BOXFIT.COVER ---
     final double screenAspectRatio = size.width / size.height;
     final double photoAspectRatio = originalPhotoSize.width / originalPhotoSize.height;
 
@@ -435,16 +579,15 @@ class StaticPhotoFacePainter extends CustomPainter {
 
         List<Offset> transformedPoints = [];
         for (final point in contour.points) {
-          // 1. Skalowanie z układu współrzędnych zdjęcia do skali ekranu
           double dx = point.x.toDouble() * finalScale;
           double dy = point.y.toDouble() * finalScale;
 
-          // 2. Korekta przesunięcia wycentrowania obrazu (offset)
           dx += offsetX;
           dy += offsetY;
 
-          // 3. 🔄 UKŁAD LUSTRZANY (MIRRORING FIX DLA APARATÓW SELFIE)
-          if (isFrontCamera && Platform.isAndroid) {
+          // 🚀 Ponieważ obróciliśmy wyżej zdjęcie w kontenerze Image (żeby było jak lustro),
+          // tutaj też lustrzanie musimy odwrócić współrzędną X dla punktów maski, żeby nałożyły się idealnie w punkt!
+          if (isFrontCamera) {
             dx = size.width - dx;
           }
 
@@ -467,5 +610,130 @@ class StaticPhotoFacePainter extends CustomPainter {
   @override
   bool shouldRepaint(StaticPhotoFacePainter oldDelegate) {
     return oldDelegate.faces != faces;
+  }
+}
+
+// =========================================================================
+// EYE MATCH ANALYZER - MODEL DANYCH I LOGIKA ALGORYTMU
+// =========================================================================
+class EyeAnalysisResult {
+  final String spacing;
+  final String tilt;
+  final String shape;
+  final String depth;
+  final String lashStyle;
+  final String lashCurl;
+  final String lashDescription;
+
+  EyeAnalysisResult({
+    required this.spacing,
+    required this.tilt,
+    required this.shape,
+    required this.depth,
+    required this.lashStyle,
+    required this.lashCurl,
+    required this.lashDescription,
+  });
+}
+
+class EyeMatchAnalyzer {
+  static EyeAnalysisResult analyze({
+    required Offset leftInnerCorner,
+    required Offset leftOuterCorner,
+    required Offset leftTopPupil,
+    required Offset leftBottomPupil,
+    required Offset rightInnerCorner,
+    required Offset rightOuterCorner,
+    required Offset profileBrowRidge,
+    required Offset profileEyeCenter,
+    required Offset profileCheekbone,
+  }) {
+
+    double leftEyeWidth = (leftOuterCorner.dx - leftInnerCorner.dx).abs();
+    double interOcularDistance = (rightInnerCorner.dx - leftInnerCorner.dx).abs();
+
+    String spacingResult = "Proporcjonalne";
+    if (leftEyeWidth > 0 && interOcularDistance > 0) {
+      if (interOcularDistance < leftEyeWidth * 0.9) {
+        spacingResult = "Blisko osadzone";
+      } else if (interOcularDistance > leftEyeWidth * 1.1) {
+        spacingResult = "Szeroko rozstawione";
+      }
+    }
+
+    double tiltDelta = leftOuterCorner.dy - leftInnerCorner.dy;
+
+    String tiltResult = "Klasyczne";
+    if (tiltDelta > 3.0) {
+      tiltResult = "Opadające (Smutne)";
+    } else if (tiltDelta < -3.0) {
+      tiltResult = "Uniesione (Kocie)";
+    }
+
+    double leftEyeHeight = (leftBottomPupil.dy - leftTopPupil.dy).abs();
+    double opennessRatio = leftEyeWidth > 0 ? (leftEyeHeight / leftEyeWidth) : 0;
+
+    String shapeResult = "Migdałowe";
+    if (opennessRatio > 0.38) {
+      shapeResult = "Okrągłe";
+    }
+
+    double browToCheekAverageX = (profileBrowRidge.dx + profileCheekbone.dx) / 2;
+    double depthDelta = profileEyeCenter.dx - browToCheekAverageX;
+
+    String depthResult = "Normalnie osadzone";
+    if (profileBrowRidge.dx > 0 && profileCheekbone.dx > 0) {
+      if (depthDelta < -8.0) {
+        depthResult = "Głęboko osadzone";
+      } else if (depthDelta > 8.0) {
+        depthResult = "Wypukłe / Płytkie";
+      }
+    }
+
+    String recommendedStyle = "Naturalny Accent";
+    String recommendedCurl = "C";
+    String description = "Klasyczna stylizacja podkreślająca naturalną anatomię oka.";
+
+    if (shapeResult == "Okrągłe") {
+      recommendedStyle = "Kocie Oko (Cat Eye)";
+      recommendedCurl = "C przechodzące w B";
+      description = "Wydłużamy oko optycznie na zewnątrz, stosując krótsze rzęsy w centrum i dłuższe w kąciku zewnętrznym, aby zniwelować okrągły kształt.";
+    }
+
+    if (tiltResult == "Opadające (Smutne)") {
+      recommendedStyle = "Wiewiórka (Squirrel)";
+      recommendedCurl = "D / CC";
+      description = "Mocny lifting kącika zewnętrznego! Najdłuższy punkt aplikacji znajduje się tuż przed końcem oka. Na samym brzegu drastycznie skracamy rzęsy i podbijamy skręt do D.";
+    }
+
+    if (spacingResult == "Blisko osadzone" && shapeResult != "Okrągłe") {
+      recommendedStyle = "Lisi (Fox Eye)";
+      recommendedCurl = "C / M";
+      description = "Skupiamy gęstość i długość na zewnętrznej krawędzi, aby optycznie odsunąć oczy od siebie.";
+    }
+
+    if (spacingResult == "Szeroko rozstawione") {
+      recommendedStyle = "Lalka (Doll Eye)";
+      recommendedCurl = "C / D";
+      description = "Najdłuższe rzęsy aplikujemy w centralnej części oka (nad źrenicą), aby optycznie przybliżyć oczy do siebie i otworzyć spojrzenie.";
+    }
+
+    if (depthResult == "Głęboko osadzone") {
+      recommendedCurl = "L / M";
+      description += " Użyto skrętu L/M, który ma prostą nasadę i ostry kąt, dzięki czemu rzęsy wychodzą poza linię mocnego łuku brwiowego.";
+    } else if (depthResult == "Wypukłe / Płytkie") {
+      recommendedCurl = "B / C";
+      description += " Zastosowano łagodniejszy skręt i krótsze długości, aby nie przerysować naturalnie dużego oka.";
+    }
+
+    return EyeAnalysisResult(
+      spacing: spacingResult,
+      tilt: tiltResult,
+      shape: shapeResult,
+      depth: depthResult,
+      lashStyle: recommendedStyle,
+      lashCurl: recommendedCurl,
+      lashDescription: description,
+    );
   }
 }
