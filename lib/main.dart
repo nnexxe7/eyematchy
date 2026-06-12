@@ -11,7 +11,7 @@ import 'screens/invitations_screen.dart';
 import 'screens/salon_settings_screen.dart';
 import 'screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
-import 'screens/eye_match_screen.dart'; // <-- DODANY IMPORT
+import 'screens/eye_match_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,20 +126,22 @@ class AppDrawer extends StatelessWidget {
             accountEmail: Text(userData['email'] ?? ''),
           ),
 
-          // --- 👁️ NOWA ZAKŁADKA EYE-MATCH AI (WIDOCZNA DLA KAŻDEGO) ---
-          ListTile(
-            leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
-            title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: const Text('Analiza kształtu oczu i dobór rzęs', style: TextStyle(fontSize: 11)),
-            onTap: () {
-              Navigator.pop(context); // Zamyka drawer
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
-              );
-            },
-          ),
-          const Divider(height: 1),
+          // --- 👁️ ZAKŁADKA EYE-MATCH AI (WIDOCZNA TYLKO DLA STYLISTKI) ---
+          if (roles.contains('salon')) ...[
+            ListTile(
+              leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
+              title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Analiza kształtu oczu i dobór rzęs', style: TextStyle(fontSize: 11)),
+              onTap: () {
+                Navigator.pop(context); // Zamyka drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
+                );
+              },
+            ),
+            const Divider(height: 1),
+          ],
 
           if (hasBothRoles) ...[
             if (currentRole == 'salon')
