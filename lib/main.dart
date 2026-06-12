@@ -12,6 +12,7 @@ import 'screens/salon_settings_screen.dart';
 import 'screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
 import 'screens/eye_match_screen.dart';
+import 'screens/client_appointments_screen.dart'; // 🚀 DODANY IMPORT NOWEGO EKRANU
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -127,7 +128,7 @@ class AppDrawer extends StatelessWidget {
           ),
 
           // --- 👁️ ZAKŁADKA EYE-MATCH AI (WIDOCZNA TYLKO DLA STYLISTKI) ---
-          if (roles.contains('salon')) ...[
+          if (currentRole == 'salon') ...[
             ListTile(
               leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
               title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
@@ -137,6 +138,23 @@ class AppDrawer extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
+                );
+              },
+            ),
+            const Divider(height: 1),
+          ],
+
+          // --- 📅 ZAKŁADKA MOJE WIZYTY (🚀 WIDOCZNA TYLKO DLA PROFILU KLIENTKI) ---
+          if (currentRole == 'client') ...[
+            ListTile(
+              leading: const Icon(Icons.calendar_month, color: Colors.pinkAccent),
+              title: const Text('Moje zaplanowane wizyty', style: TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: const Text('Sprawdź swoje rezerwacje w salonach', style: TextStyle(fontSize: 11)),
+              onTap: () {
+                Navigator.pop(context); // Zamyka drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ClientAppointmentsScreen(userData: userData)),
                 );
               },
             ),
