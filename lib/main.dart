@@ -12,7 +12,7 @@ import 'screens/salon_settings_screen.dart';
 import 'screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
 import 'screens/eye_match_screen.dart';
-import 'screens/client_appointments_screen.dart'; // 🚀 DODANY IMPORT NOWEGO EKRANU
+import 'screens/client_appointments_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -144,7 +144,7 @@ class AppDrawer extends StatelessWidget {
             const Divider(height: 1),
           ],
 
-          // --- 📅 ZAKŁADKA MOJE WIZYTY (🚀 WIDOCZNA TYLKO DLA PROFILU KLIENTKI) ---
+          // --- 📅 ZAKŁADKA MOJE WIZYTY (WIDOCZNA TYLKO DLA PROFILU KLIENTKI) ---
           if (currentRole == 'client') ...[
             ListTile(
               leading: const Icon(Icons.calendar_month, color: Colors.pinkAccent),
@@ -176,16 +176,43 @@ class AppDrawer extends StatelessWidget {
               ),
           ] else ...[
             if (currentRole == 'client')
-              ListTile(
-                leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
-                title: const Text('Zaproszenia do pracy'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => InvitationsScreen(userData: userData),
+            // 🚀 DODANO DYNAMICZNE UKRYWANIE I BADGE DLA ZAPROSZEŃ
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('invitations')
+                    .where('email', isEqualTo: userData['email'])
+                    .where('status', isEqualTo: 'pending')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  // Ukrywamy zakładkę, jeśli brak danych lub brak zaproszeń
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return ListTile(
+                    leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
+                    title: const Text('Zaproszenia do pracy', style: TextStyle(fontWeight: FontWeight.w500)),
+                    // 🔴 Pokaż okrągły, czerwony znacznik z liczbą zaproszeń
+                    trailing: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${snapshot.data!.docs.length}',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                     ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => InvitationsScreen(userData: userData),
+                        ),
+                      );
+                    },
                   );
                 },
               ),

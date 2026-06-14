@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
+import 'eye_match_screen.dart';
 
 class SalonHomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -490,6 +491,19 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
             title: Text(currentSalonName),
             backgroundColor: Colors.deepPurple,
             foregroundColor: Colors.white,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.face_retouching_natural),
+                tooltip: 'Uruchom EyeMatch AI',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
             bottom: TabBar(
               controller: _tabController,
               labelColor: Colors.white,
@@ -567,8 +581,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'star';
-                            bool isOwnerB = dataB['salonRole'] == 'star';
+                            bool isOwnerA = dataA['salonRole'] == 'owner'; // 🚀 POPRAWKA
+                            bool isOwnerB = dataB['salonRole'] == 'owner'; // 🚀 POPRAWKA
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -636,7 +650,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                               Expanded(
                                 child: ListView.builder(
-                                  // 🚀 POPRAWKA: Dodałem padding u góry, tworząc bezpieczny bufor dla "7:00" na krawędzi nagłówka
                                   padding: const EdgeInsets.only(top: 12, bottom: 24),
                                   itemCount: 56,
                                   itemBuilder: (context, index) {
@@ -653,7 +666,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                         clipBehavior: Clip.none,
                                         child: Row(
                                           children: [
-                                            // --- KONTENER GODZINY (W PEŁNI WIDOCZNY, BEZ LINII PRZECINAJĄCEJ) ---
                                             Container(
                                               width: 60,
                                               height: 55,
@@ -747,7 +759,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                       mainAxisAlignment: MainAxisAlignment.center,
                                                       crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
-                                                        Navigator.canPop(context) ? const SizedBox() : Builder(
+                                                        Builder(
                                                           builder: (context) {
                                                             List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
                                                             int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
@@ -870,8 +882,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'star';
-                            bool isOwnerB = dataB['salonRole'] == 'star';
+                            bool isOwnerA = dataA['salonRole'] == 'owner'; // 🚀 POPRAWKA
+                            bool isOwnerB = dataB['salonRole'] == 'owner'; // 🚀 POPRAWKA
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -893,7 +905,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                               final String firstName = employee['firstName'] ?? 'Nieznane';
                               final String lastName = employee['lastName'] ?? 'Imię';
                               final String email = employee['email'] ?? '';
-                              final bool empIsOwner = employee['salonRole'] == 'star';
+                              final bool empIsOwner = employee['salonRole'] == 'owner'; // 🚀 POPRAWKA
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: CircleAvatar(backgroundColor: empIsOwner ? Colors.deepPurple : Colors.purple[300], child: Icon(empIsOwner ? Icons.star : Icons.person, color: Colors.white)),
