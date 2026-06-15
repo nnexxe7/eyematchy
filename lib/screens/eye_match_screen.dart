@@ -77,11 +77,24 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
     }
   }
 
-  void _toggleCamera() async {
-    if (_cameras.length < 2) return;
+  // 🚀 POPRAWIONA METODA - ZAPOBIEGA CZERWONEMU EKRANOWI
+  Future<void> _toggleCamera() async {
+    if (_cameras.length < 2 || _isCameraInitializing) return;
+
+    final oldController = _cameraController;
+
+    // Natychmiast informujemy UI, że kamera jest niedostępna (pokazuje loader)
+    setState(() {
+      _cameraController = null;
+    });
+
+    // Bezpiecznie zamykamy starą kamerę w tle
+    if (oldController != null) {
+      await oldController.dispose();
+    }
+
     _selectedCameraIndex = _selectedCameraIndex == 1 ? 0 : 1;
-    _disposeCamera();
-    _initializeCamera();
+    await _initializeCamera();
   }
 
   Future<void> _captureAndAnalyze() async {
@@ -124,8 +137,6 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
           _currentStep = 4;
         }
       });
-
-      _disposeCamera();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Błąd zapisu zdjęcia: $e'), backgroundColor: Colors.redAccent),
