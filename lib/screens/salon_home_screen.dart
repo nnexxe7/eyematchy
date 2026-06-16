@@ -15,6 +15,7 @@ class SalonHomeScreen extends StatefulWidget {
 class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProviderStateMixin {
   String? _selectedCityId;
   late TabController _tabController;
+  int _currentTabIndex = 0;
   DateTime _selectedDate = DateTime.now();
   final TextEditingController _emailController = TextEditingController();
 
@@ -36,8 +37,10 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     _tabController = TabController(length: 3, vsync: this);
 
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {});
+      if (_tabController.index != _currentTabIndex) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
       }
     });
   }
@@ -308,16 +311,15 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                   }
 
                   List<DropdownMenuItem<String>> cityItems = [];
-                  if (snapshot.hasData) {
-                    for (var doc in snapshot.data!.docs) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
-                    }
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
                   }
 
                   return DropdownButtonFormField<String>(
@@ -517,7 +519,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
             ),
           ),
           drawer: AppDrawer(userData: liveUserData, currentRole: 'salon'),
-          floatingActionButton: _tabController.index == 2
+          floatingActionButton: _currentTabIndex == 2
               ? FloatingActionButton(onPressed: () => _showServiceForm(), backgroundColor: Colors.deepPurple, child: const Icon(Icons.add, color: Colors.white))
               : null,
           body: TabBarView(
@@ -530,12 +532,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     .doc(liveUserData['salonId'])
                     .snapshots(),
                 builder: (context, salonSnapshot) {
-                  if (salonSnapshot.connectionState == ConnectionState.waiting) {
+                  // 🚀 ZMIANA: Zabezpieczenie przed mruganiem (czytanie z pamięci podręcznej przy szybkim przeładowaniu)
+                  if (!salonSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                   }
 
                   Map<String, dynamic> openingHours = {};
-                  if (salonSnapshot.hasData && salonSnapshot.data!.exists) {
+                  if (salonSnapshot.data!.exists) {
                     final salonData = salonSnapshot.data!.data() as Map<String, dynamic>;
                     openingHours = salonData['openingHours'] ?? {};
                   }
@@ -560,7 +563,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         .where('date', isEqualTo: formattedDateStr)
                         .snapshots(),
                     builder: (context, appointmentsSnapshot) {
-                      if (appointmentsSnapshot.connectionState == ConnectionState.waiting) {
+                      // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
+                      if (!appointmentsSnapshot.hasData) {
                         return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                       }
 
@@ -572,7 +576,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             .where('salonId', isEqualTo: liveUserData['salonId'])
                             .snapshots(),
                         builder: (context, empSnapshot) {
-                          if (empSnapshot.connectionState == ConnectionState.waiting) {
+                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
+                          if (!empSnapshot.hasData) {
                             return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           }
 
@@ -581,8 +586,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'owner'; // 🚀 POPRAWKA
-                            bool isOwnerB = dataB['salonRole'] == 'owner'; // 🚀 POPRAWKA
+                            bool isOwnerA = dataA['salonRole'] == 'owner';
+                            bool isOwnerB = dataB['salonRole'] == 'owner';
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -874,16 +879,17 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                       child: StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: liveUserData['salonId']).snapshots(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Text("Brak przypisanych pracowników.");
+                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
+                          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                          if (snapshot.data!.docs.isEmpty) return const Text("Brak przypisanych pracowników.");
 
                           List<QueryDocumentSnapshot> employeeDocs = List.from(snapshot.data!.docs);
                           employeeDocs.sort((a, b) {
                             final dataA = a.data() as Map<String, dynamic>;
                             final dataB = b.data() as Map<String, dynamic>;
 
-                            bool isOwnerA = dataA['salonRole'] == 'owner'; // 🚀 POPRAWKA
-                            bool isOwnerB = dataB['salonRole'] == 'owner'; // 🚀 POPRAWKA
+                            bool isOwnerA = dataA['salonRole'] == 'owner';
+                            bool isOwnerB = dataB['salonRole'] == 'owner';
 
                             if (isOwnerA && !isOwnerB) return -1;
                             if (!isOwnerA && isOwnerB) return 1;
@@ -905,7 +911,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                               final String firstName = employee['firstName'] ?? 'Nieznane';
                               final String lastName = employee['lastName'] ?? 'Imię';
                               final String email = employee['email'] ?? '';
-                              final bool empIsOwner = employee['salonRole'] == 'owner'; // 🚀 POPRAWKA
+                              final bool empIsOwner = employee['salonRole'] == 'owner';
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 leading: CircleAvatar(backgroundColor: empIsOwner ? Colors.deepPurple : Colors.purple[300], child: Icon(empIsOwner ? Icons.star : Icons.person, color: Colors.white)),
@@ -937,6 +943,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: liveUserData['salonId']).snapshots(),
                       builder: (context, empSnapshot) {
+                        // Tutaj mruganie już wcześniej było zabezpieczone warunkiem !hasData ;)
                         if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
                         String selectedLabel = "Cały Salon (Wszystkie usługi)";
@@ -1022,10 +1029,12 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             ? FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).snapshots()
                             : FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).where('employeeId', isEqualTo: _selectedEmployeeFilter).snapshots(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
+                          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+                          if (snapshot.data!.docs.isEmpty) {
                             return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text("Brak zdefiniowanych usług dla wybranego filtra.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))));
                           }
+
                           return ListView.builder(
                             itemCount: snapshot.data!.docs.length,
                             itemBuilder: (context, index) {
