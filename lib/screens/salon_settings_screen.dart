@@ -252,6 +252,147 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     }
   }
 
+  // 🚀 NOWA METODA: Głębokie usuwanie salonu i powiązanych struktur w Firebase
+  Future<void> _deleteSalonPermanently() async {
+    final salonId = widget.userData['salonId'];
+    final String targetSalonName = _nameController.text.trim();
+    if (salonId == null || salonId.isEmpty) return;
+
+    final TextEditingController confirmController = TextEditingController();
+    final GlobalKey<FormState> dialogFormKey = GlobalKey<FormState>();
+
+    // 1. Wyświetlenie okna potwierdzenia z przepisywaniem nazwy
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('USUWANIE SALONU'),
+          ],
+        ),
+        content: Form(
+          key: dialogFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ta operacja jest nieodwracalna. Spowoduje usunięcie cennika, harmonogramu oraz odpięcie wszystkich pracowników.',
+                style: TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(height: 16),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: Colors.black87, fontSize: 13),
+                  children: [
+                    const TextSpan(text: 'Aby potwierdzić, wpisz poniżej nazwę swojego salonu: '),
+                    TextSpan(text: targetSalonName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: confirmController,
+                decoration: InputDecoration(
+                  hintText: 'Wpisz nazwę salonu',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim() != targetSalonName) {
+                    return 'Wpisana nazwa jest niepoprawna';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anuluj')),
+          ElevatedButton(
+            onPressed: () {
+              if (dialogFormKey.currentState!.validate()) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            child: const Text('Usuń bezpowrotnie'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+
+    // Pobranie instancji nawigatora i messengera przed wyczyszczeniem kontekstu
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)),
+    );
+
+    try {
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      // A. Pobranie wszystkich powiązanych usług (services)
+      final servicesQuery = await FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: salonId).get();
+      for (var doc in servicesQuery.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // B. Pobranie wszystkich powiązanych zaproszeń (invitations)
+      final invitesQuery = await FirebaseFirestore.instance.collection('invitations').where('salonId', isEqualTo: salonId).get();
+      for (var doc in invitesQuery.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // C. Pobranie wszystkich pracowników należących do salonu i usunięcie im ról
+      final usersQuery = await FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: salonId).get();
+      for (var doc in usersQuery.docs) {
+        final uData = doc.data();
+        List<String> userRoles = List<String>.from(uData['roles'] ?? ['client']);
+        userRoles.remove('salon'); // Usunięcie uprawnienia wejścia do panelu salonu
+
+        batch.update(doc.reference, {
+          'salonId': FieldValue.delete(),
+          'salonName': FieldValue.delete(),
+          'salonRole': FieldValue.delete(),
+          'employeeRole': FieldValue.delete(),
+          'roles': userRoles.isEmpty ? ['client'] : userRoles,
+          'currentView': 'client', // Cofnięcie do domyślnego widoku klientki
+        });
+      }
+
+      // D. Usunięcie samego głównego dokumentu salonu
+      final salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
+      batch.delete(salonRef);
+
+      // E. Wysłanie paczki danych do chmury Firebase
+      await batch.commit();
+
+      navigator.pop(); // Zamknięcie okna ładowania
+      navigator.pop(); // Zamknięcie ustawień i powrót do odświeżonego AuthGate
+
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Salon oraz wszystkie powiązane dane zostały pomyślnie usunięte.'), backgroundColor: Colors.black87),
+      );
+
+    } catch (e) {
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Błąd podczas usuwania salonu: $e'), backgroundColor: Colors.redAccent),
+      );
+    } finally {
+      confirmController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isOwner = widget.userData['salonRole'] == 'owner';
@@ -358,7 +499,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
             ),
           ),
 
-          // TAB 2: PANEL USTAWIEŃ GODZIN PRACY CHRONOLOGICZNYCH
+          // TAB 2: PANEL USTAWIEŃ GODZIN PRACY
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -370,9 +511,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                 Expanded(
                   child: ListView(
                     children: (() {
-                      // Tutaj sortujemy dni alfabetycznie na podstawie prefiksów 1_, 2_ itp.
                       final sortedKeys = _openingHours.keys.toList()..sort();
-
                       return sortedKeys.map((key) {
                         return BusinessDayRow(
                           dayName: _dayLabels[key] ?? key,
@@ -401,7 +540,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
             ),
           ),
 
-          // TAB 3: ZESPÓŁ
+          // TAB 3: ZESPÓŁ + 🔴 SEKCCJA USUWANIA SALONU NA SAMYM DOLE
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -415,10 +554,8 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                      // Kopiujemy listę dokumentów, aby móc ją swobodnie posortować
                       List<QueryDocumentSnapshot> employeesDocs = List.from(snapshot.data!.docs);
 
-                      // --- 🧠 LOGIKA SORTOWANIA ---
                       employeesDocs.sort((a, b) {
                         final dataA = a.data() as Map<String, dynamic>;
                         final dataB = b.data() as Map<String, dynamic>;
@@ -426,18 +563,15 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                         bool isOwnerA = dataA['salonRole'] == 'owner';
                         bool isOwnerB = dataB['salonRole'] == 'owner';
 
-                        // 1. Jeśli jeden z nich to owner, wypychamy go na początek
                         if (isOwnerA && !isOwnerB) return -1;
                         if (!isOwnerA && isOwnerB) return 1;
 
-                        // 2. Jeśli obaj mają tę samą rolę (stylistki), sortujemy alfabetycznie po imieniu
                         String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
                         String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
 
                         int compareNames = nameA.compareTo(nameB);
                         if (compareNames != 0) return compareNames;
 
-                        // 3. Jeśli imiona są identyczne, dodatkowo sortujemy po nazwisku
                         String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
                         String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
                         return lastNameA.compareTo(lastNameB);
@@ -466,6 +600,25 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
                         },
                       );
                     },
+                  ),
+                ),
+
+                // --- 🔴 PRZYCISK KASOWANIA SALONU (ZAWSZE NA SAMYM DOLE LISTY ZESPOŁU) ---
+                const Divider(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _deleteSalonPermanently,
+                    icon: const Icon(Icons.delete_forever_outlined),
+                    label: const Text('Skasuj profil salonu', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[50],
+                      foregroundColor: Colors.redAccent,
+                      elevation: 0,
+                      side: const BorderSide(color: Colors.redAccent, width: 1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                 ),
               ],
@@ -527,7 +680,6 @@ class BusinessDayRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 🏷️ LEWA STRONA: Nazwa dnia i status pod spodem
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -551,10 +703,7 @@ class BusinessDayRow extends StatelessWidget {
               ),
             ],
           ),
-
           const Spacer(),
-
-          // ⏱️ PRAWA STRONA: Wybór godzin lub informacja o zamknięciu
           if (!isClosed) ...[
             TextButton(
               onPressed: () => pickTime(context, true),
@@ -586,8 +735,6 @@ class BusinessDayRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
-
-          // 🔲 CHECKBOX na samym końcu rzędu
           Checkbox(
             value: !isClosed,
             activeColor: Colors.deepPurple,
