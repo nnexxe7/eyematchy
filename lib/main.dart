@@ -13,6 +13,7 @@ import 'screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
 import 'screens/eye_match_screen.dart';
 import 'screens/client_appointments_screen.dart';
+import 'screens/verify_email_screen.dart'; // 🚀 DODANY IMPORT EKRANU WERYFIKACJI
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,8 +52,9 @@ class AuthGate extends StatelessWidget {
         systemNavigationBarColor: Color(0xFFFAFAFA),
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
+      // 🚀 ZMIANA 1: Używamy userChanges() zamiast authStateChanges(), aby reagować na odświeżenie statusu email
       child: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
+        stream: FirebaseAuth.instance.userChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
@@ -62,6 +64,12 @@ class AuthGate extends StatelessWidget {
 
           if (snapshot.hasData) {
             final user = snapshot.data!;
+
+            // 🚀 ZMIANA 2: Blokujemy dostęp, jeśli e-mail nie jest zweryfikowany
+            if (!user.emailVerified) {
+              return const VerifyEmailScreen();
+            }
+
             return StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
               builder: (context, docSnapshot) {
@@ -176,7 +184,7 @@ class AppDrawer extends StatelessWidget {
               ),
           ] else ...[
             if (currentRole == 'client')
-            // 🚀 DODANO DYNAMICZNE UKRYWANIE I BADGE DLA ZAPROSZEŃ
+            // 🚀 DYNAMICZNE UKRYWANIE I BADGE DLA ZAPROSZEŃ
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('invitations')

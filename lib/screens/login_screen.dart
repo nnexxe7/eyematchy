@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart'; // 🚀 Import ekranu resetowania hasła
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -172,7 +173,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
-                  const SizedBox(height: 24),
+
+                  const SizedBox(height: 8), // Zmniejszony odstęp
+
+                  // 🚀 DODANY PRZYCISK "Zapomniałeś hasła?"
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                        );
+                      },
+                      child: const Text(
+                        'Nie pamiętasz hasła?',
+                        style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16), // Odstęp przed głównym przyciskiem logowania
+
                   ElevatedButton(
                     onPressed: _isLoading ? null : _signIn,
                     style: ElevatedButton.styleFrom(
@@ -227,6 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           'Zarejestruj się',
                           style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
                         ),
+
                       ),
                     ],
                   ),
