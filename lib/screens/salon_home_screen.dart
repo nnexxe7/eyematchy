@@ -311,7 +311,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
                 builder: (context, snapshot) {
-                  // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                   }
@@ -525,14 +524,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           body: TabBarView(
             controller: _tabController,
             children: [
-              // --- ZAKŁADKA 1: KALENDARZ WIELOKOLUMNOWY Z WYSZARZANIEM I WIZYTAMI ---
+              // --- ZAKŁADKA 1: KALENDARZ PRZEWIJANY W POZIOMIE ---
               StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('salons')
                     .doc(liveUserData['salonId'])
                     .snapshots(),
                 builder: (context, salonSnapshot) {
-                  // 🚀 ZMIANA: Zabezpieczenie przed mruganiem (czytanie z pamięci podręcznej przy szybkim przeładowaniu)
                   if (!salonSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                   }
@@ -563,7 +561,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         .where('date', isEqualTo: formattedDateStr)
                         .snapshots(),
                     builder: (context, appointmentsSnapshot) {
-                      // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
                       if (!appointmentsSnapshot.hasData) {
                         return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                       }
@@ -576,7 +573,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             .where('salonId', isEqualTo: liveUserData['salonId'])
                             .snapshots(),
                         builder: (context, empSnapshot) {
-                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
                           if (!empSnapshot.hasData) {
                             return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           }
@@ -607,245 +603,268 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                               _buildDatePicker(),
 
                               if (employees.isNotEmpty)
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[100],
-                                    border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const SizedBox(width: 60),
-                                      ...employees.map((emp) {
-                                        final eData = emp.data() as Map<String, dynamic>;
-                                        final String firstName = eData['firstName'] ?? 'Stylistka';
-                                        final String lastName = eData['lastName'] ?? '';
+                                Expanded(
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      // 🚀 OBLICZANIE SZEROKOŚCI - Zawsze pokazuj max 3 pracowników na szerokość ekranu
+                                      double availableWidth = constraints.maxWidth - 60; // Cała szerokość minus kolumna czasu
+                                      int displayCount = employees.length > 3 ? 3 : employees.length;
+                                      double columnWidth = availableWidth / displayCount;
 
-                                        return Expanded(
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 6),
-                                            alignment: Alignment.center,
-                                            decoration: BoxDecoration(
-                                              border: Border(left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
-                                            ),
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  firstName,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
-                                                ),
-                                                if (lastName.isNotEmpty)
-                                                  Text(
-                                                    lastName,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.deepPurple[400]),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      }),
-                                    ],
-                                  ),
-                                ),
-
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.only(top: 12, bottom: 24),
-                                  itemCount: 56,
-                                  itemBuilder: (context, index) {
-                                    int currentMinutesFromDayStart = (7 * 60) + (index * 15);
-                                    int hour = currentMinutesFromDayStart ~/ 60;
-                                    int minute = currentMinutesFromDayStart % 60;
-                                    String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
-                                    bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
-                                    bool isFullHour = minute == 0;
-
-                                    return Container(
-                                      color: Colors.white,
-                                      child: ClipRect(
-                                        clipBehavior: Clip.none,
+                                      return SingleChildScrollView(
+                                        // Główne przewijanie PIONOWO - przesuwa cały kalendarz (czas + tabele) w dół
                                         child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Container(
+                                            // --- 1. LEWA, ZAMROŻONA KOLUMNA (CZAS) ---
+                                            SizedBox(
                                               width: 60,
-                                              height: 55,
-                                              decoration: const BoxDecoration(
-                                                color: Colors.white,
-                                              ),
-                                              child: Stack(
-                                                clipBehavior: Clip.none,
+                                              child: Column(
                                                 children: [
-                                                  Positioned(
-                                                    left: 0,
-                                                    right: 0,
-                                                    top: -6,
-                                                    child: Container(
-                                                      alignment: Alignment.center,
-                                                      child: Text(
-                                                        formattedTime,
-                                                        textAlign: TextAlign.center,
-                                                        style: TextStyle(
-                                                          fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                                          color: isSlotClosed ? Colors.grey[400] : Colors.black87,
-                                                          fontSize: 11,
-                                                          height: 1.0,
-                                                        ),
-                                                      ),
+                                                  // Puste miejsce, żeby zrównać czas z nagłówkami pracownic
+                                                  Container(
+                                                    height: 50,
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.grey[100],
+                                                      border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
                                                     ),
                                                   ),
+                                                  // Klocki z godzinami (od 7:00 do 21:00)
+                                                  ...List.generate(56, (index) {
+                                                    int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                                    int hour = currentMinutesFromDayStart ~/ 60;
+                                                    int minute = currentMinutesFromDayStart % 60;
+                                                    String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
+                                                    bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
+                                                    bool isFullHour = minute == 0;
+
+                                                    return Container(
+                                                      width: 60,
+                                                      height: 55, // Ta sama wysokość co u pracowników
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        border: Border(
+                                                          // Dodanie lekkiej ramki dla równych godzin (np. 12:00)
+                                                          bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0),
+                                                        ),
+                                                      ),
+                                                      child: Stack(
+                                                        clipBehavior: Clip.none,
+                                                        children: [
+                                                          Positioned(
+                                                            left: 0,
+                                                            right: 0,
+                                                            top: -6,
+                                                            child: Container(
+                                                              alignment: Alignment.center,
+                                                              child: Text(
+                                                                formattedTime,
+                                                                textAlign: TextAlign.center,
+                                                                style: TextStyle(
+                                                                  fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                                                  color: isSlotClosed ? Colors.grey[400] : Colors.black87,
+                                                                  fontSize: 11,
+                                                                  height: 1.0,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }),
                                                 ],
                                               ),
                                             ),
 
-                                            ...employees.map((emp) {
-                                              final String empId = emp.id;
+                                            // --- 2. PRAWA, PRZEWIJANA POZIOMO CZĘŚĆ (PRACOWNICE) ---
+                                            Expanded(
+                                              child: SingleChildScrollView(
+                                                // Przewijanie POZIOMO - przesuwa w bok, gdy jest >3 pracowników
+                                                scrollDirection: Axis.horizontal,
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: employees.map((emp) {
+                                                    final eData = emp.data() as Map<String, dynamic>;
+                                                    final String firstName = eData['firstName'] ?? 'Stylistka';
+                                                    final String lastName = eData['lastName'] ?? '';
+                                                    final String empId = emp.id;
 
-                                              Map<String, dynamic>? appointmentData;
-                                              bool isStartOfBooking = false;
-                                              bool isEndOfBooking = false;
-
-                                              for (var appDoc in activeAppointments) {
-                                                final d = appDoc.data() as Map<String, dynamic>;
-                                                if (d['employeeId'] != empId) continue;
-
-                                                List<String> timeParts = (d['time'] ?? '00:00').split(':');
-                                                int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                int duration = d['duration'] ?? 30;
-                                                int appEnd = appStart + duration;
-
-                                                if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
-                                                  appointmentData = d;
-                                                  isStartOfBooking = (currentMinutesFromDayStart == appStart);
-                                                  isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
-                                                  break;
-                                                }
-                                              }
-
-                                              bool hasBooking = appointmentData != null;
-                                              bool drawBottomLine = !hasBooking || isEndOfBooking;
-
-                                              return Expanded(
-                                                child: Container(
-                                                  height: 55,
-                                                  decoration: BoxDecoration(
-                                                    color: hasBooking
-                                                        ? Colors.deepPurple
-                                                        : (isSlotClosed ? Colors.grey[200]! : Colors.white),
-                                                    border: Border(
-                                                      left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                                      bottom: drawBottomLine
-                                                          ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                                          : BorderSide.none,
-                                                    ),
-                                                  ),
-                                                  child: hasBooking
-                                                      ? Container(
-                                                    margin: EdgeInsets.only(
-                                                      left: 3,
-                                                      right: 3,
-                                                      top: isStartOfBooking ? 3 : 0,
-                                                      bottom: isEndOfBooking ? 3 : 0,
-                                                    ),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.deepPurple,
-                                                      borderRadius: BorderRadius.vertical(
-                                                        top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                        bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                      ),
-                                                    ),
-                                                    child: isStartOfBooking
-                                                        ? Column(
-                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Builder(
-                                                          builder: (context) {
-                                                            List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
-                                                            int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                            int duration = appointmentData['duration'] ?? 30;
-                                                            int endMin = startMin + duration;
-
-                                                            String endHour = (endMin ~/ 60).toString();
-                                                            String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                            String formattedEndTime = "$endHour:$endMinute";
-
-                                                            return Text(
-                                                              "${appointmentData['time']} - $formattedEndTime",
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: TextStyle(
-                                                                color: Colors.white.withOpacity(0.85),
-                                                                fontSize: 9,
-                                                                fontWeight: FontWeight.w400,
-                                                              ),
-                                                            );
-                                                          },
-                                                        ),
-                                                        const SizedBox(height: 1),
-
-                                                        Expanded(
-                                                          child: Container(
-                                                            alignment: Alignment.centerLeft,
-                                                            child: Text(
-                                                              appointmentData['clientName'] ?? 'Klient',
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: const TextStyle(
-                                                                color: Colors.white,
-                                                                fontWeight: FontWeight.bold,
-                                                                fontSize: 11,
+                                                    return SizedBox(
+                                                      width: columnWidth,
+                                                      child: Column(
+                                                        children: [
+                                                          // Nagłówek pracownicy
+                                                          Container(
+                                                            height: 50,
+                                                            padding: const EdgeInsets.symmetric(vertical: 6),
+                                                            alignment: Alignment.center,
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.grey[100],
+                                                              border: Border(
+                                                                bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                                                                left: BorderSide(color: Colors.grey[300]!, width: 0.5),
                                                               ),
                                                             ),
+                                                            child: Column(
+                                                              mainAxisAlignment: MainAxisAlignment.center,
+                                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                                              children: [
+                                                                Text(
+                                                                  firstName,
+                                                                  maxLines: 1,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
+                                                                ),
+                                                                if (lastName.isNotEmpty)
+                                                                  Text(
+                                                                    lastName,
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                    style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.deepPurple[400]),
+                                                                  ),
+                                                              ],
+                                                            ),
                                                           ),
-                                                        ),
 
-                                                        Text(
-                                                          appointmentData['serviceName'] ?? 'Usługa',
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: const TextStyle(
-                                                            color: Colors.white70,
-                                                            fontSize: 9,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    )
-                                                        : const SizedBox.shrink(),
-                                                  )
-                                                      : InkWell(
-                                                    onTap: isSlotClosed ? null : () {
-                                                      final eData = emp.data() as Map<String, dynamic>;
-                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                        SnackBar(
-                                                          content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
-                                                          duration: const Duration(seconds: 1),
-                                                        ),
-                                                      );
-                                                    },
-                                                    child: isSlotClosed
-                                                        ? Center(
-                                                      child: isFullHour
-                                                          ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26)
-                                                          : const SizedBox(),
-                                                    )
-                                                        : const SizedBox.expand(),
-                                                  ),
+                                                          // Klocki slotów czasu (wizyt)
+                                                          ...List.generate(56, (index) {
+                                                            int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                                            int hour = currentMinutesFromDayStart ~/ 60;
+                                                            int minute = currentMinutesFromDayStart % 60;
+                                                            String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
+                                                            bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
+                                                            bool isFullHour = minute == 0;
+
+                                                            Map<String, dynamic>? appointmentData;
+                                                            bool isStartOfBooking = false;
+                                                            bool isEndOfBooking = false;
+
+                                                            for (var appDoc in activeAppointments) {
+                                                              final d = appDoc.data() as Map<String, dynamic>;
+                                                              if (d['employeeId'] != empId) continue;
+
+                                                              List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                                              int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                              int duration = d['duration'] ?? 30;
+                                                              int appEnd = appStart + duration;
+
+                                                              if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
+                                                                appointmentData = d;
+                                                                isStartOfBooking = (currentMinutesFromDayStart == appStart);
+                                                                isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
+                                                                break;
+                                                              }
+                                                            }
+
+                                                            bool hasBooking = appointmentData != null;
+                                                            bool drawBottomLine = !hasBooking || isEndOfBooking;
+
+                                                            return Container(
+                                                              height: 55,
+                                                              decoration: BoxDecoration(
+                                                                color: hasBooking
+                                                                    ? Colors.deepPurple
+                                                                    : (isSlotClosed ? Colors.grey[200]! : Colors.white),
+                                                                border: Border(
+                                                                  left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                                                  bottom: drawBottomLine
+                                                                      ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                                                      : BorderSide.none,
+                                                                ),
+                                                              ),
+                                                              child: hasBooking
+                                                                  ? Container(
+                                                                margin: EdgeInsets.only(
+                                                                  left: 3,
+                                                                  right: 3,
+                                                                  top: isStartOfBooking ? 3 : 0,
+                                                                  bottom: isEndOfBooking ? 3 : 0,
+                                                                ),
+                                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors.deepPurple,
+                                                                  borderRadius: BorderRadius.vertical(
+                                                                    top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                    bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                  ),
+                                                                ),
+                                                                child: isStartOfBooking
+                                                                    ? Column(
+                                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                                  children: [
+                                                                    Builder(
+                                                                      builder: (context) {
+                                                                        List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
+                                                                        int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                        int duration = appointmentData['duration'] ?? 30;
+                                                                        int endMin = startMin + duration;
+
+                                                                        String endHour = (endMin ~/ 60).toString();
+                                                                        String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                                        String formattedEndTime = "$endHour:$endMinute";
+
+                                                                        return Text(
+                                                                          "${appointmentData['time']} - $formattedEndTime",
+                                                                          maxLines: 1,
+                                                                          overflow: TextOverflow.ellipsis,
+                                                                          style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400),
+                                                                        );
+                                                                      },
+                                                                    ),
+                                                                    const SizedBox(height: 1),
+                                                                    Expanded(
+                                                                      child: Container(
+                                                                        alignment: Alignment.centerLeft,
+                                                                        child: Text(
+                                                                          appointmentData['clientName'] ?? 'Klient',
+                                                                          maxLines: 1,
+                                                                          overflow: TextOverflow.ellipsis,
+                                                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    Text(
+                                                                      appointmentData['serviceName'] ?? 'Usługa',
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                      style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                                                    ),
+                                                                  ],
+                                                                )
+                                                                    : const SizedBox.shrink(),
+                                                              )
+                                                                  : InkWell(
+                                                                onTap: isSlotClosed ? null : () {
+                                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                                    SnackBar(
+                                                                      content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
+                                                                      duration: const Duration(seconds: 1),
+                                                                    ),
+                                                                  );
+                                                                },
+                                                                child: isSlotClosed
+                                                                    ? Center(
+                                                                  child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox(),
+                                                                )
+                                                                    : const SizedBox.expand(),
+                                                              ),
+                                                            );
+                                                          }),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }).toList(),
                                                 ),
-                                              );
-                                            }),
+                                              ),
+                                            ),
                                           ],
                                         ),
-                                      ),
-                                    );
-                                  },
+                                      );
+                                    },
+                                  ),
                                 ),
-                              ),
                             ],
                           );
                         },
@@ -879,7 +898,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                       child: StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: liveUserData['salonId']).snapshots(),
                         builder: (context, snapshot) {
-                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
                           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           if (snapshot.data!.docs.isEmpty) return const Text("Brak przypisanych pracowników.");
 
@@ -943,7 +961,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: liveUserData['salonId']).snapshots(),
                       builder: (context, empSnapshot) {
-                        // Tutaj mruganie już wcześniej było zabezpieczone warunkiem !hasData ;)
                         if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
                         String selectedLabel = "Cały Salon (Wszystkie usługi)";
@@ -1029,7 +1046,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             ? FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).snapshots()
                             : FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).where('employeeId', isEqualTo: _selectedEmployeeFilter).snapshots(),
                         builder: (context, snapshot) {
-                          // 🚀 ZMIANA: Zabezpieczenie przed mruganiem
                           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
                           if (snapshot.data!.docs.isEmpty) {
                             return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text("Brak zdefiniowanych usług dla wybranego filtra.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))));
