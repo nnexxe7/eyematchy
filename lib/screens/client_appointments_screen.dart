@@ -50,7 +50,8 @@ class ClientAppointmentsScreen extends StatelessWidget {
 
         final String salonName = appointment['salonName'] ?? 'Nieznany Salon';
         final String serviceName = appointment['serviceName'] ?? 'Usługa';
-        final String employeeName = appointment['employeeName'] ?? 'Stylistka';
+        final String employeeId = appointment['employeeId'] ?? ''; // ID pracownika do pobrania nazwiska
+        final String fallbackEmployeeName = appointment['employeeName'] ?? 'Stylistka';
         final String date = appointment['date'] ?? '';
         final String time = appointment['time'] ?? '';
         final double price = (appointment['price'] as num?)?.toDouble() ?? 0.0;
@@ -114,12 +115,30 @@ class ClientAppointmentsScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.person_outline, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 6),
-                    Text('Stylistka: $employeeName', style: TextStyle(color: Colors.grey[700])),
-                  ],
+
+                // 🚀 Pobieranie nazwiska pracownika z kolekcji 'users'
+                FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance.collection('users').doc(employeeId).get(),
+                  builder: (context, empSnapshot) {
+                    String finalEmployeeName = fallbackEmployeeName;
+
+                    if (empSnapshot.hasData && empSnapshot.data!.exists) {
+                      final empData = empSnapshot.data!.data() as Map<String, dynamic>;
+                      final String firstName = empData['firstName'] ?? fallbackEmployeeName;
+                      final String lastName = empData['lastName'] ?? '';
+
+                      // Łączymy imię z nazwiskiem (jeśli nazwisko jest w bazie)
+                      finalEmployeeName = lastName.isNotEmpty ? "$firstName $lastName" : firstName;
+                    }
+
+                    return Row(
+                      children: [
+                        Icon(Icons.person_outline, size: 16, color: Colors.grey[600]),
+                        const SizedBox(width: 6),
+                        Text('Stylistka: $finalEmployeeName', style: TextStyle(color: Colors.grey[700])),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

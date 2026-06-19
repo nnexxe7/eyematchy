@@ -59,6 +59,105 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     super.dispose();
   }
 
+  // 🚀 NOWA METODA: Panel ze szczegółami rezerwacji wywoływany po kliknięciu wizyty w kalendarzu
+  void _showAppointmentDetails(Map<String, dynamic> appointmentData) {
+    final String fallbackName = appointmentData['clientName'] ?? 'Klient';
+    final String serviceName = appointmentData['serviceName'] ?? 'Usługa';
+    final String time = appointmentData['time'] ?? '00:00';
+    final String date = appointmentData['date'] ?? '';
+    final int duration = appointmentData['duration'] ?? 30;
+    final double price = (appointmentData['price'] as num?)?.toDouble() ?? 0.0;
+    final String? clientId = appointmentData['clientId'];
+
+    // Formatowanie daty rrrr-mm-dd na dd.mm.rrrr
+    String displayDate = date;
+    try {
+      final parts = date.split('-');
+      if (parts.length == 3) {
+        displayDate = "${parts[2]}.${parts[1]}.${parts[0]}";
+      }
+    } catch (_) {}
+
+    // Obliczanie czasu zakończenia usługi
+    List<String> timeParts = time.split(':');
+    int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+    int endMin = startMin + duration;
+    String endHour = (endMin ~/ 60).toString();
+    String endMinute = (endMin % 60).toString().padLeft(2, '0');
+    String formattedEndTime = "$endHour:$endMinute";
+
+    showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+        builder: (context) {
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).padding.bottom + 24,
+                top: 24, left: 24, right: 24
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Szczegóły wizyty', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                // Pobieranie nazwiska w locie dla szczegółów
+                FutureBuilder<DocumentSnapshot>(
+                    future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
+                    builder: (context, clientSnap) {
+                      String finalName = fallbackName;
+                      if (clientSnap.hasData && clientSnap.data!.exists) {
+                        final cData = clientSnap.data!.data() as Map<String, dynamic>;
+                        final String fName = cData['firstName'] ?? fallbackName;
+                        final String lName = cData['lastName'] ?? '';
+                        finalName = lName.isNotEmpty ? "$fName $lName" : fName;
+                      }
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                          child: const Icon(Icons.person, color: Colors.deepPurple),
+                        ),
+                        title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        subtitle: Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                      );
+                    }
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.pinkAccent.withOpacity(0.1),
+                    child: const Icon(Icons.spa, color: Colors.pinkAccent),
+                  ),
+                  title: const Text('Usługa', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  subtitle: Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.withOpacity(0.1),
+                    child: const Icon(Icons.access_time, color: Colors.blue),
+                  ),
+                  title: const Text('Termin', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  subtitle: Text('$displayDate\n$time - $formattedEndTime ($duration min)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
+                ),
+              ],
+            ),
+          );
+        }
+    );
+  }
+
   Future<void> _createSalon() async {
     final name = _salonNameController.text.trim();
     final street = _salonStreetController.text.trim();
@@ -606,13 +705,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                 Expanded(
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
-                                      // 🚀 OBLICZANIE SZEROKOŚCI - Zawsze pokazuj max 3 pracowników na szerokość ekranu
-                                      double availableWidth = constraints.maxWidth - 60; // Cała szerokość minus kolumna czasu
+                                      double availableWidth = constraints.maxWidth - 60; // Szerokość pomniejszona o kolumnę z czasem
                                       int displayCount = employees.length > 3 ? 3 : employees.length;
                                       double columnWidth = availableWidth / displayCount;
 
                                       return SingleChildScrollView(
-                                        // Główne przewijanie PIONOWO - przesuwa cały kalendarz (czas + tabele) w dół
                                         child: Row(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
@@ -621,7 +718,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                               width: 60,
                                               child: Column(
                                                 children: [
-                                                  // Puste miejsce, żeby zrównać czas z nagłówkami pracownic
                                                   Container(
                                                     height: 50,
                                                     decoration: BoxDecoration(
@@ -629,7 +725,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                       border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
                                                     ),
                                                   ),
-                                                  // Klocki z godzinami (od 7:00 do 21:00)
                                                   ...List.generate(56, (index) {
                                                     int currentMinutesFromDayStart = (7 * 60) + (index * 15);
                                                     int hour = currentMinutesFromDayStart ~/ 60;
@@ -640,11 +735,10 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                     return Container(
                                                       width: 60,
-                                                      height: 55, // Ta sama wysokość co u pracowników
+                                                      height: 55,
                                                       decoration: BoxDecoration(
                                                         color: Colors.white,
                                                         border: Border(
-                                                          // Dodanie lekkiej ramki dla równych godzin (np. 12:00)
                                                           bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0),
                                                         ),
                                                       ),
@@ -680,7 +774,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                             // --- 2. PRAWA, PRZEWIJANA POZIOMO CZĘŚĆ (PRACOWNICE) ---
                                             Expanded(
                                               child: SingleChildScrollView(
-                                                // Przewijanie POZIOMO - przesuwa w bok, gdy jest >3 pracowników
                                                 scrollDirection: Axis.horizontal,
                                                 child: Row(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,8 +786,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                     return SizedBox(
                                                       width: columnWidth,
                                                       child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.stretch,
                                                         children: [
-                                                          // Nagłówek pracownicy
                                                           Container(
                                                             height: 50,
                                                             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -727,7 +820,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                             ),
                                                           ),
 
-                                                          // Klocki slotów czasu (wizyt)
                                                           ...List.generate(56, (index) {
                                                             int currentMinutesFromDayStart = (7 * 60) + (index * 15);
                                                             int hour = currentMinutesFromDayStart ~/ 60;
@@ -763,9 +855,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                             return Container(
                                                               height: 55,
                                                               decoration: BoxDecoration(
-                                                                color: hasBooking
-                                                                    ? Colors.deepPurple
-                                                                    : (isSlotClosed ? Colors.grey[200]! : Colors.white),
+                                                                color: isSlotClosed ? Colors.grey[200]! : Colors.white,
                                                                 border: Border(
                                                                   left: BorderSide(color: Colors.grey[200]!, width: 0.5),
                                                                   bottom: drawBottomLine
@@ -774,66 +864,71 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                 ),
                                                               ),
                                                               child: hasBooking
-                                                                  ? Container(
-                                                                margin: EdgeInsets.only(
-                                                                  left: 3,
-                                                                  right: 3,
-                                                                  top: isStartOfBooking ? 3 : 0,
-                                                                  bottom: isEndOfBooking ? 3 : 0,
-                                                                ),
-                                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors.deepPurple,
-                                                                  borderRadius: BorderRadius.vertical(
-                                                                    top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                                    bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                              // 🚀 ZMIANA: Dodano GestureDetector, aby wywołać panel szczegółów!
+                                                                  ? GestureDetector(
+                                                                onTap: () => _showAppointmentDetails(appointmentData!),
+                                                                child: Container(
+                                                                  width: double.infinity,
+                                                                  margin: EdgeInsets.only(
+                                                                    left: 3,
+                                                                    right: 3,
+                                                                    top: isStartOfBooking ? 3 : 0,
+                                                                    bottom: isEndOfBooking ? 3 : 0,
                                                                   ),
-                                                                ),
-                                                                child: isStartOfBooking
-                                                                    ? Column(
-                                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                                  children: [
-                                                                    Builder(
-                                                                      builder: (context) {
-                                                                        List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
-                                                                        int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                                        int duration = appointmentData['duration'] ?? 30;
-                                                                        int endMin = startMin + duration;
-
-                                                                        String endHour = (endMin ~/ 60).toString();
-                                                                        String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                                        String formattedEndTime = "$endHour:$endMinute";
-
-                                                                        return Text(
-                                                                          "${appointmentData['time']} - $formattedEndTime",
-                                                                          maxLines: 1,
-                                                                          overflow: TextOverflow.ellipsis,
-                                                                          style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400),
-                                                                        );
-                                                                      },
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.deepPurple,
+                                                                    borderRadius: BorderRadius.vertical(
+                                                                      top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                      bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
                                                                     ),
-                                                                    const SizedBox(height: 1),
-                                                                    Expanded(
-                                                                      child: Container(
-                                                                        alignment: Alignment.centerLeft,
-                                                                        child: Text(
-                                                                          appointmentData['clientName'] ?? 'Klient',
-                                                                          maxLines: 1,
-                                                                          overflow: TextOverflow.ellipsis,
-                                                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                                                  ),
+                                                                  child: isStartOfBooking
+                                                                      ? Column(
+                                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                                    children: [
+                                                                      Builder(
+                                                                        builder: (context) {
+                                                                          List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
+                                                                          int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                          int duration = appointmentData['duration'] ?? 30;
+                                                                          int endMin = startMin + duration;
+
+                                                                          String endHour = (endMin ~/ 60).toString();
+                                                                          String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                                          String formattedEndTime = "$endHour:$endMinute";
+
+                                                                          return Text(
+                                                                            "${appointmentData['time']} - $formattedEndTime",
+                                                                            maxLines: 1,
+                                                                            overflow: TextOverflow.ellipsis,
+                                                                            style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400),
+                                                                          );
+                                                                        },
+                                                                      ),
+                                                                      const SizedBox(height: 1),
+                                                                      Expanded(
+                                                                        child: Container(
+                                                                          alignment: Alignment.centerLeft,
+                                                                          child: Text(
+                                                                            appointmentData['clientName'] ?? 'Klient',
+                                                                            maxLines: 1,
+                                                                            overflow: TextOverflow.ellipsis,
+                                                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                                                          ),
                                                                         ),
                                                                       ),
-                                                                    ),
-                                                                    Text(
-                                                                      appointmentData['serviceName'] ?? 'Usługa',
-                                                                      maxLines: 1,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                      style: const TextStyle(color: Colors.white70, fontSize: 9),
-                                                                    ),
-                                                                  ],
-                                                                )
-                                                                    : const SizedBox.shrink(),
+                                                                      Text(
+                                                                        appointmentData['serviceName'] ?? 'Usługa',
+                                                                        maxLines: 1,
+                                                                        overflow: TextOverflow.ellipsis,
+                                                                        style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                                                      ),
+                                                                    ],
+                                                                  )
+                                                                      : const SizedBox.shrink(),
+                                                                ),
                                                               )
                                                                   : InkWell(
                                                                 onTap: isSlotClosed ? null : () {
