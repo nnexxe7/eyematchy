@@ -59,7 +59,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     super.dispose();
   }
 
-  // 🚀 NOWA METODA: Panel ze szczegółami rezerwacji wywoływany po kliknięciu wizyty w kalendarzu
   void _showAppointmentDetails(Map<String, dynamic> appointmentData) {
     final String fallbackName = appointmentData['clientName'] ?? 'Klient';
     final String serviceName = appointmentData['serviceName'] ?? 'Usługa';
@@ -69,7 +68,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     final double price = (appointmentData['price'] as num?)?.toDouble() ?? 0.0;
     final String? clientId = appointmentData['clientId'];
 
-    // Formatowanie daty rrrr-mm-dd na dd.mm.rrrr
     String displayDate = date;
     try {
       final parts = date.split('-');
@@ -78,7 +76,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
       }
     } catch (_) {}
 
-    // Obliczanie czasu zakończenia usługi
     List<String> timeParts = time.split(':');
     int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
     int endMin = startMin + duration;
@@ -110,7 +107,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   ],
                 ),
                 const Divider(height: 24),
-                // Pobieranie nazwiska w locie dla szczegółów
                 FutureBuilder<DocumentSnapshot>(
                     future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
                     builder: (context, clientSnap) {
@@ -151,6 +147,35 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   title: const Text('Termin', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   subtitle: Text('$displayDate\n$time - $formattedEndTime ($duration min)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
                 ),
+                const SizedBox(height: 24),
+
+                if (clientId != null && clientId.isNotEmpty)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context); // Zamyka bottom sheet
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ClientHistoryScreen(
+                              clientId: clientId,
+                              salonId: widget.userData['salonId'],
+                              clientName: fallbackName,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.history, color: Colors.deepPurple),
+                      label: const Text('Historyczne wizyty klientki', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepPurple,
+                        side: const BorderSide(color: Colors.deepPurple),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
               ],
             ),
           );
@@ -864,7 +889,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                 ),
                                                               ),
                                                               child: hasBooking
-                                                              // 🚀 ZMIANA: Dodano GestureDetector, aby wywołać panel szczegółów!
                                                                   ? GestureDetector(
                                                                 onTap: () => _showAppointmentDetails(appointmentData!),
                                                                 child: Container(
@@ -1201,6 +1225,129 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           ),
         );
       },
+    );
+  }
+}
+
+// 🚀 KLASA: Ekran wyświetlający całą historię wizyt wybranej klientki
+class ClientHistoryScreen extends StatelessWidget {
+  final String clientId;
+  final String salonId;
+  final String clientName;
+
+  const ClientHistoryScreen({
+    super.key,
+    required this.clientId,
+    required this.salonId,
+    required this.clientName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        // 🚀 ZMIANA TUTAJ: FutureBuilder pobierający nazwisko do paska tytułowego
+        title: FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(clientId).get(),
+          builder: (context, snapshot) {
+            String fullName = clientName;
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>;
+              final fName = data['firstName'] ?? clientName;
+              final lName = data['lastName'] ?? '';
+              fullName = lName.isNotEmpty ? "$fName $lName" : fName;
+            }
+            return Text('Historia: $fullName');
+          },
+        ),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('appointments')
+            .where('salonId', isEqualTo: salonId)
+            .where('clientId', isEqualTo: clientId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('Brak historii wizyt dla tej klientki.', style: TextStyle(color: Colors.grey, fontSize: 16)));
+          }
+
+          final docs = snapshot.data!.docs.toList();
+
+          // Sortujemy od najnowszej do najstarszej
+          docs.sort((a, b) {
+            final dataA = a.data() as Map<String, dynamic>;
+            final dataB = b.data() as Map<String, dynamic>;
+
+            int dateComparison = (dataB['date'] ?? '').compareTo(dataA['date'] ?? '');
+            if (dateComparison == 0) {
+              return (dataB['time'] ?? '').compareTo(dataA['time'] ?? '');
+            }
+            return dateComparison;
+          });
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              final date = data['date'] ?? '';
+              final time = data['time'] ?? '';
+              final serviceName = data['serviceName'] ?? 'Usługa';
+              final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+              final employeeName = data['employeeName'] ?? '';
+              final employeeId = data['employeeId'];
+
+              String displayDate = date;
+              try {
+                final parts = date.split('-');
+                if (parts.length == 3) {
+                  displayDate = "${parts[2]}.${parts[1]}.${parts[0]}";
+                }
+              } catch (_) {}
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                    child: const Icon(Icons.check_circle_outline, color: Colors.deepPurple),
+                  ),
+                  title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: employeeId != null
+                        ? FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('users').doc(employeeId).get(),
+                      builder: (context, empSnap) {
+                        String finalEmpName = employeeName;
+                        if (empSnap.hasData && empSnap.data!.exists) {
+                          final empData = empSnap.data!.data() as Map<String, dynamic>;
+                          final String fName = empData['firstName'] ?? employeeName;
+                          final String lName = empData['lastName'] ?? '';
+                          finalEmpName = lName.isNotEmpty ? "$fName $lName" : fName;
+                        }
+                        return Text('$displayDate godz. $time\nWykonuje: $finalEmpName');
+                      },
+                    )
+                        : Text('$displayDate godz. $time\nWykonuje: $employeeName'),
+                  ),
+
+                  trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple, fontSize: 15)),
+                  isThreeLine: true,
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
