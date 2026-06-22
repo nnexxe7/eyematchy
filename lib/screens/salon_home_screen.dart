@@ -31,6 +31,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
   String _selectedEmployeeFilter = 'all';
 
+  final ScrollController _headerScrollController = ScrollController();
+  final ScrollController _gridScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +44,14 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
         setState(() {
           _currentTabIndex = _tabController.index;
         });
+      }
+    });
+
+    _gridScrollController.addListener(() {
+      if (_headerScrollController.hasClients && _gridScrollController.hasClients) {
+        if (_headerScrollController.offset != _gridScrollController.offset) {
+          _headerScrollController.jumpTo(_gridScrollController.offset);
+        }
       }
     });
   }
@@ -56,6 +67,8 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     _serviceNameController.dispose();
     _servicePriceController.dispose();
     _serviceDurationController.dispose();
+    _headerScrollController.dispose();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -107,16 +120,21 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   ],
                 ),
                 const Divider(height: 24),
+
                 FutureBuilder<DocumentSnapshot>(
                     future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
                     builder: (context, clientSnap) {
                       String finalName = fallbackName;
+                      String phoneNumber = '';
+
                       if (clientSnap.hasData && clientSnap.data!.exists) {
                         final cData = clientSnap.data!.data() as Map<String, dynamic>;
                         final String fName = cData['firstName'] ?? fallbackName;
                         final String lName = cData['lastName'] ?? '';
                         finalName = lName.isNotEmpty ? "$fName $lName" : fName;
+                        phoneNumber = cData['phoneNumber'] ?? cData['phone'] ?? 'Brak numeru w profilu';
                       }
+
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
@@ -124,10 +142,27 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                           child: const Icon(Icons.person, color: Colors.deepPurple),
                         ),
                         title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        subtitle: Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            if (phoneNumber.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.phone, size: 14, color: Colors.deepPurple),
+                                    const SizedBox(width: 6),
+                                    Text(phoneNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.deepPurple)),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
                       );
                     }
                 ),
+
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
@@ -155,7 +190,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     height: 50,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Navigator.pop(context); // Zamyka bottom sheet
+                        Navigator.pop(context);
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -353,7 +388,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => Padding(
         padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
             top: 24, left: 24, right: 24
         ),
         child: SingleChildScrollView(
@@ -402,7 +437,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   child: const Text('Zapisz usługę', style: TextStyle(fontSize: 16)),
                 ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -734,252 +768,270 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                       int displayCount = employees.length > 3 ? 3 : employees.length;
                                       double columnWidth = availableWidth / displayCount;
 
-                                      return SingleChildScrollView(
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            // --- 1. LEWA, ZAMROŻONA KOLUMNA (CZAS) ---
-                                            SizedBox(
-                                              width: 60,
-                                              child: Column(
-                                                children: [
-                                                  Container(
-                                                    height: 50,
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.grey[100],
-                                                      border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1)),
-                                                    ),
+                                      return Column(
+                                        children: [
+                                          // 🚀 1. STICKY HEADER FOR SALON: Wiersz z nazwiskami stylistek przyklejony na stałe do góry
+                                          Row(
+                                            children: [
+                                              Container(
+                                                width: 60,
+                                                height: 50,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[100],
+                                                  border: Border(
+                                                    bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                                                    right: BorderSide(color: Colors.grey[300]!, width: 0.5),
                                                   ),
-                                                  ...List.generate(56, (index) {
-                                                    int currentMinutesFromDayStart = (7 * 60) + (index * 15);
-                                                    int hour = currentMinutesFromDayStart ~/ 60;
-                                                    int minute = currentMinutesFromDayStart % 60;
-                                                    String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
-                                                    bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
-                                                    bool isFullHour = minute == 0;
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: SingleChildScrollView(
+                                                  controller: _headerScrollController,
+                                                  scrollDirection: Axis.horizontal,
+                                                  physics: const NeverScrollableScrollPhysics(), // Scrolluje się tylko za pomocą dolnej siatki
+                                                  child: Row(
+                                                    children: employees.map((emp) {
+                                                      final eData = emp.data() as Map<String, dynamic>;
+                                                      final String firstName = eData['firstName'] ?? 'Stylistka';
+                                                      final String lastName = eData['lastName'] ?? '';
 
-                                                    return Container(
-                                                      width: 60,
-                                                      height: 55,
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white,
-                                                        border: Border(
-                                                          bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0),
+                                                      return Container(
+                                                        width: columnWidth,
+                                                        height: 50,
+                                                        padding: const EdgeInsets.symmetric(vertical: 6),
+                                                        alignment: Alignment.center,
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.grey[100],
+                                                          border: Border(
+                                                            bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                                                            left: BorderSide(color: Colors.grey[300]!, width: 0.5),
+                                                          ),
                                                         ),
-                                                      ),
-                                                      child: Stack(
-                                                        clipBehavior: Clip.none,
-                                                        children: [
-                                                          Positioned(
-                                                            left: 0,
-                                                            right: 0,
-                                                            top: -6,
-                                                            child: Container(
-                                                              alignment: Alignment.center,
-                                                              child: Text(
-                                                                formattedTime,
-                                                                textAlign: TextAlign.center,
-                                                                style: TextStyle(
-                                                                  fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                                                  color: isSlotClosed ? Colors.grey[400] : Colors.black87,
-                                                                  fontSize: 11,
-                                                                  height: 1.0,
-                                                                ),
+                                                        child: Column(
+                                                          mainAxisAlignment: MainAxisAlignment.center,
+                                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                                          children: [
+                                                            Text(
+                                                              firstName,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
+                                                            ),
+                                                            if (lastName.isNotEmpty)
+                                                              Text(
+                                                                lastName,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.deepPurple[400]),
                                                               ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                    }).toList(),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+
+                                          // 🚀 2. PRZEWIJANA SIATKA GODZIN I SLOTÓW W DÓŁ
+                                          Expanded(
+                                            child: SingleChildScrollView(
+                                              child: Row(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  // --- LEWA, ZAMROŻONA KOLUMNA (CZAS) ---
+                                                  SizedBox(
+                                                    width: 60,
+                                                    child: Column(
+                                                      children: List.generate(56, (index) {
+                                                        int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                                        int hour = currentMinutesFromDayStart ~/ 60;
+                                                        int minute = currentMinutesFromDayStart % 60;
+                                                        String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
+                                                        bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
+                                                        bool isFullHour = minute == 0;
+
+                                                        return Container(
+                                                          width: 60,
+                                                          height: 55,
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.white,
+                                                            border: Border(
+                                                              right: BorderSide(color: Colors.grey[300]!, width: 0.5),
+                                                              bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0),
                                                             ),
                                                           ),
-                                                        ],
+                                                          child: Stack(
+                                                            clipBehavior: Clip.none,
+                                                            children: [
+                                                              Positioned(
+                                                                left: 0,
+                                                                right: 0,
+                                                                top: -6,
+                                                                child: Container(
+                                                                  alignment: Alignment.center,
+                                                                  child: Text(
+                                                                    formattedTime,
+                                                                    textAlign: TextAlign.center,
+                                                                    style: TextStyle(
+                                                                      fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
+                                                                      color: isSlotClosed ? Colors.grey[400] : Colors.black87,
+                                                                      fontSize: 11,
+                                                                      height: 1.0,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      }),
+                                                    ),
+                                                  ),
+
+                                                  // --- PRAWA, PRZEWIJANA POZIOMO I PIONOWO CZĘŚĆ (SLOTY) ---
+                                                  Expanded(
+                                                    child: SingleChildScrollView(
+                                                      controller: _gridScrollController,
+                                                      scrollDirection: Axis.horizontal,
+                                                      child: Row(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: employees.map((emp) {
+                                                          final String empId = emp.id;
+
+                                                          return SizedBox(
+                                                            width: columnWidth,
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                              children: List.generate(56, (index) {
+                                                                int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                                                int minute = currentMinutesFromDayStart % 60;
+                                                                bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
+                                                                bool isFullHour = minute == 0;
+
+                                                                Map<String, dynamic>? appointmentData;
+                                                                bool isStartOfBooking = false;
+                                                                bool isEndOfBooking = false;
+
+                                                                for (var appDoc in activeAppointments) {
+                                                                  final d = appDoc.data() as Map<String, dynamic>;
+                                                                  if (d['employeeId'] != empId) continue;
+
+                                                                  List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                                                  int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                  int duration = d['duration'] ?? 30;
+                                                                  int appEnd = appStart + duration;
+
+                                                                  if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
+                                                                    appointmentData = d;
+                                                                    isStartOfBooking = (currentMinutesFromDayStart == appStart);
+                                                                    isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
+                                                                    break;
+                                                                  }
+                                                                }
+
+                                                                bool hasBooking = appointmentData != null;
+                                                                bool drawBottomLine = !hasBooking || isEndOfBooking;
+
+                                                                return Container(
+                                                                  height: 55,
+                                                                  decoration: BoxDecoration(
+                                                                    color: isSlotClosed ? Colors.grey[200]! : Colors.white,
+                                                                    border: Border(
+                                                                      left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                                                      bottom: drawBottomLine
+                                                                          ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
+                                                                          : BorderSide.none,
+                                                                    ),
+                                                                  ),
+                                                                  child: hasBooking
+                                                                      ? GestureDetector(
+                                                                    onTap: () => _showAppointmentDetails(appointmentData!),
+                                                                    child: Container(
+                                                                      width: double.infinity,
+                                                                      margin: EdgeInsets.only(
+                                                                        left: 3,
+                                                                        right: 3,
+                                                                        top: isStartOfBooking ? 3 : 0,
+                                                                        bottom: isEndOfBooking ? 3 : 0,
+                                                                      ),
+                                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                                      decoration: BoxDecoration(
+                                                                        color: Colors.deepPurple,
+                                                                        borderRadius: BorderRadius.vertical(
+                                                                          top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                          bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                        ),
+                                                                      ),
+                                                                      child: isStartOfBooking
+                                                                          ? Column(
+                                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                                        children: [
+                                                                          Builder(
+                                                                            builder: (context) {
+                                                                              List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
+                                                                              int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                              int duration = appointmentData['duration'] ?? 30;
+                                                                              int endMin = startMin + duration;
+
+                                                                              String endHour = (endMin ~/ 60).toString();
+                                                                              String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                                              String formattedEndTime = "$endHour:$endMinute";
+
+                                                                              return Text(
+                                                                                "${appointmentData['time']} - $formattedEndTime",
+                                                                                maxLines: 1,
+                                                                                overflow: TextOverflow.ellipsis,
+                                                                                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400),
+                                                                              );
+                                                                            },
+                                                                          ),
+                                                                          const SizedBox(height: 1),
+                                                                          Expanded(
+                                                                            child: Container(
+                                                                              alignment: Alignment.centerLeft,
+                                                                              child: Text(
+                                                                                appointmentData['clientName'] ?? 'Klient',
+                                                                                maxLines: 1,
+                                                                                overflow: TextOverflow.ellipsis,
+                                                                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                          Text(
+                                                                            appointmentData['serviceName'] ?? 'Usługa',
+                                                                            maxLines: 1,
+                                                                            overflow: TextOverflow.ellipsis,
+                                                                            style: const TextStyle(color: Colors.white70, fontSize: 9),
+                                                                          ),
+                                                                        ],
+                                                                      )
+                                                                          : const SizedBox.shrink(),
+                                                                    ),
+                                                                  )
+                                                                      : InkWell(
+                                                                    onTap: isSlotClosed ? null : () {},
+                                                                    child: isSlotClosed
+                                                                        ? Center(
+                                                                      child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox(),
+                                                                    )
+                                                                        : const SizedBox.expand(),
+                                                                  ),
+                                                                );
+                                                              }),
+                                                            ),
+                                                          );
+                                                        }).toList(),
                                                       ),
-                                                    );
-                                                  }),
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
                                             ),
-
-                                            // --- 2. PRAWA, PRZEWIJANA POZIOMO CZĘŚĆ (PRACOWNICE) ---
-                                            Expanded(
-                                              child: SingleChildScrollView(
-                                                scrollDirection: Axis.horizontal,
-                                                child: Row(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: employees.map((emp) {
-                                                    final eData = emp.data() as Map<String, dynamic>;
-                                                    final String firstName = eData['firstName'] ?? 'Stylistka';
-                                                    final String lastName = eData['lastName'] ?? '';
-                                                    final String empId = emp.id;
-
-                                                    return SizedBox(
-                                                      width: columnWidth,
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                                                        children: [
-                                                          Container(
-                                                            height: 50,
-                                                            padding: const EdgeInsets.symmetric(vertical: 6),
-                                                            alignment: Alignment.center,
-                                                            decoration: BoxDecoration(
-                                                              color: Colors.grey[100],
-                                                              border: Border(
-                                                                bottom: BorderSide(color: Colors.grey[300]!, width: 1),
-                                                                left: BorderSide(color: Colors.grey[300]!, width: 0.5),
-                                                              ),
-                                                            ),
-                                                            child: Column(
-                                                              mainAxisAlignment: MainAxisAlignment.center,
-                                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                                              children: [
-                                                                Text(
-                                                                  firstName,
-                                                                  maxLines: 1,
-                                                                  overflow: TextOverflow.ellipsis,
-                                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple),
-                                                                ),
-                                                                if (lastName.isNotEmpty)
-                                                                  Text(
-                                                                    lastName,
-                                                                    maxLines: 1,
-                                                                    overflow: TextOverflow.ellipsis,
-                                                                    style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.deepPurple[400]),
-                                                                  ),
-                                                              ],
-                                                            ),
-                                                          ),
-
-                                                          ...List.generate(56, (index) {
-                                                            int currentMinutesFromDayStart = (7 * 60) + (index * 15);
-                                                            int hour = currentMinutesFromDayStart ~/ 60;
-                                                            int minute = currentMinutesFromDayStart % 60;
-                                                            String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
-                                                            bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
-                                                            bool isFullHour = minute == 0;
-
-                                                            Map<String, dynamic>? appointmentData;
-                                                            bool isStartOfBooking = false;
-                                                            bool isEndOfBooking = false;
-
-                                                            for (var appDoc in activeAppointments) {
-                                                              final d = appDoc.data() as Map<String, dynamic>;
-                                                              if (d['employeeId'] != empId) continue;
-
-                                                              List<String> timeParts = (d['time'] ?? '00:00').split(':');
-                                                              int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                              int duration = d['duration'] ?? 30;
-                                                              int appEnd = appStart + duration;
-
-                                                              if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
-                                                                appointmentData = d;
-                                                                isStartOfBooking = (currentMinutesFromDayStart == appStart);
-                                                                isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
-                                                                break;
-                                                              }
-                                                            }
-
-                                                            bool hasBooking = appointmentData != null;
-                                                            bool drawBottomLine = !hasBooking || isEndOfBooking;
-
-                                                            return Container(
-                                                              height: 55,
-                                                              decoration: BoxDecoration(
-                                                                color: isSlotClosed ? Colors.grey[200]! : Colors.white,
-                                                                border: Border(
-                                                                  left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                                                  bottom: drawBottomLine
-                                                                      ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                                                      : BorderSide.none,
-                                                                ),
-                                                              ),
-                                                              child: hasBooking
-                                                                  ? GestureDetector(
-                                                                onTap: () => _showAppointmentDetails(appointmentData!),
-                                                                child: Container(
-                                                                  width: double.infinity,
-                                                                  margin: EdgeInsets.only(
-                                                                    left: 3,
-                                                                    right: 3,
-                                                                    top: isStartOfBooking ? 3 : 0,
-                                                                    bottom: isEndOfBooking ? 3 : 0,
-                                                                  ),
-                                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                                  decoration: BoxDecoration(
-                                                                    color: Colors.deepPurple,
-                                                                    borderRadius: BorderRadius.vertical(
-                                                                      top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                                      bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero,
-                                                                    ),
-                                                                  ),
-                                                                  child: isStartOfBooking
-                                                                      ? Column(
-                                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                                    children: [
-                                                                      Builder(
-                                                                        builder: (context) {
-                                                                          List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
-                                                                          int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                                          int duration = appointmentData['duration'] ?? 30;
-                                                                          int endMin = startMin + duration;
-
-                                                                          String endHour = (endMin ~/ 60).toString();
-                                                                          String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                                          String formattedEndTime = "$endHour:$endMinute";
-
-                                                                          return Text(
-                                                                            "${appointmentData['time']} - $formattedEndTime",
-                                                                            maxLines: 1,
-                                                                            overflow: TextOverflow.ellipsis,
-                                                                            style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400),
-                                                                          );
-                                                                        },
-                                                                      ),
-                                                                      const SizedBox(height: 1),
-                                                                      Expanded(
-                                                                        child: Container(
-                                                                          alignment: Alignment.centerLeft,
-                                                                          child: Text(
-                                                                            appointmentData['clientName'] ?? 'Klient',
-                                                                            maxLines: 1,
-                                                                            overflow: TextOverflow.ellipsis,
-                                                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                                                                          ),
-                                                                        ),
-                                                                      ),
-                                                                      Text(
-                                                                        appointmentData['serviceName'] ?? 'Usługa',
-                                                                        maxLines: 1,
-                                                                        overflow: TextOverflow.ellipsis,
-                                                                        style: const TextStyle(color: Colors.white70, fontSize: 9),
-                                                                      ),
-                                                                    ],
-                                                                  )
-                                                                      : const SizedBox.shrink(),
-                                                                ),
-                                                              )
-                                                                  : InkWell(
-                                                                onTap: isSlotClosed ? null : () {
-                                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                                    SnackBar(
-                                                                      content: Text('Wybrano $formattedTime u stylistki: ${eData['firstName']}'),
-                                                                      duration: const Duration(seconds: 1),
-                                                                    ),
-                                                                  );
-                                                                },
-                                                                child: isSlotClosed
-                                                                    ? Center(
-                                                                  child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox(),
-                                                                )
-                                                                    : const SizedBox.expand(),
-                                                              ),
-                                                            );
-                                                          }),
-                                                        ],
-                                                      ),
-                                                    );
-                                                  }).toList(),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       );
                                     },
                                   ),
@@ -1229,7 +1281,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
   }
 }
 
-// 🚀 KLASA: Ekran wyświetlający całą historię wizyt wybranej klientki
 class ClientHistoryScreen extends StatelessWidget {
   final String clientId;
   final String salonId;
@@ -1246,7 +1297,6 @@ class ClientHistoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // 🚀 ZMIANA TUTAJ: FutureBuilder pobierający nazwisko do paska tytułowego
         title: FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance.collection('users').doc(clientId).get(),
           builder: (context, snapshot) {
@@ -1279,7 +1329,6 @@ class ClientHistoryScreen extends StatelessWidget {
 
           final docs = snapshot.data!.docs.toList();
 
-          // Sortujemy od najnowszej do najstarszej
           docs.sort((a, b) {
             final dataA = a.data() as Map<String, dynamic>;
             final dataB = b.data() as Map<String, dynamic>;

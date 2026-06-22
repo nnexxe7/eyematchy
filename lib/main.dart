@@ -13,11 +13,14 @@ import 'screens/client_home_screen.dart';
 import 'screens/profile_settings_screen.dart';
 import 'screens/eye_match_screen.dart';
 import 'screens/client_appointments_screen.dart';
-import 'screens/verify_email_screen.dart'; // 🚀 DODANY IMPORT EKRANU WERYFIKACJI
+import 'screens/verify_email_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Usunięto sztuczne modyfikacje pasków.
+  // System sam zarządza nawigacją (najlepsze pod kątem UX i braku irytujących animacji).
   runApp(const MyApp());
 }
 
@@ -45,14 +48,14 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Pasek systemowy na dole ma teraz tło idealnie zlewające się z aplikacją
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFFFAFAFA),
+        systemNavigationBarColor: Color(0xFFFAFAFA), // Kolor tła aplikacji
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
-      // 🚀 ZMIANA 1: Używamy userChanges() zamiast authStateChanges(), aby reagować na odświeżenie statusu email
       child: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.userChanges(),
         builder: (context, snapshot) {
@@ -65,7 +68,6 @@ class AuthGate extends StatelessWidget {
           if (snapshot.hasData) {
             final user = snapshot.data!;
 
-            // 🚀 ZMIANA 2: Blokujemy dostęp, jeśli e-mail nie jest zweryfikowany
             if (!user.emailVerified) {
               return const VerifyEmailScreen();
             }
@@ -122,155 +124,153 @@ class AppDrawer extends StatelessWidget {
     final bool isOwner = currentRole == 'salon' && userData['salonRole'] == 'owner';
 
     return Drawer(
-      child: Column(
-        children: [
-          // --- GÓRNY NAGŁÓWEK UŻYTKOWNIKA ---
-          UserAccountsDrawerHeader(
-            decoration: const BoxDecoration(color: Colors.deepPurple),
-            currentAccountPicture: const CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, size: 40, color: Colors.deepPurple),
-            ),
-            accountName: Text('${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'),
-            accountEmail: Text(userData['email'] ?? ''),
-          ),
-
-          // --- 👁️ ZAKŁADKA EYE-MATCH AI (WIDOCZNA TYLKO DLA STYLISTKI) ---
-          if (currentRole == 'salon') ...[
-            ListTile(
-              leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
-              title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: const Text('Analiza kształtu oczu i dobór rzęs', style: TextStyle(fontSize: 11)),
-              onTap: () {
-                Navigator.pop(context); // Zamyka drawer
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
-                );
-              },
-            ),
-            const Divider(height: 1),
-          ],
-
-          // --- 📅 ZAKŁADKA MOJE WIZYTY (WIDOCZNA TYLKO DLA PROFILU KLIENTKI) ---
-          if (currentRole == 'client') ...[
-            ListTile(
-              leading: const Icon(Icons.calendar_month, color: Colors.pinkAccent),
-              title: const Text('Moje zaplanowane wizyty', style: TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: const Text('Sprawdź swoje rezerwacje w salonach', style: TextStyle(fontSize: 11)),
-              onTap: () {
-                Navigator.pop(context); // Zamyka drawer
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ClientAppointmentsScreen(userData: userData)),
-                );
-              },
-            ),
-            const Divider(height: 1),
-          ],
-
-          if (hasBothRoles) ...[
-            if (currentRole == 'salon')
-              ListTile(
-                leading: const Icon(Icons.person_outline, color: Colors.deepPurple),
-                title: const Text('Przełącz na profil Klientki'),
-                onTap: () => _toggleView(context, 'client'),
-              )
-            else
-              ListTile(
-                leading: const Icon(Icons.content_cut_outlined, color: Colors.deepPurple),
-                title: const Text('Przełącz na panel Stylistki'),
-                onTap: () => _toggleView(context, 'salon'),
+      // 🚀 ZMIANA: top: false pozwala na to, aby górny nagłówek profilu (fioletowy)
+      // doszedł do samej krawędzi ekranu (nad paskiem statusu),
+      // podczas gdy dół wciąż jest bezpiecznie odsunięty.
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            UserAccountsDrawerHeader(
+              margin: EdgeInsets.zero, // 🚀 ZMIANA: Likwiduje niechciany dolny odstęp nagłówka
+              decoration: const BoxDecoration(color: Colors.deepPurple),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, size: 40, color: Colors.deepPurple),
               ),
-          ] else ...[
-            if (currentRole == 'client')
-            // 🚀 DYNAMICZNE UKRYWANIE I BADGE DLA ZAPROSZEŃ
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('invitations')
-                    .where('email', isEqualTo: userData['email'])
-                    .where('status', isEqualTo: 'pending')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  // Ukrywamy zakładkę, jeśli brak danych lub brak zaproszeń
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
+              accountName: Text('${userData['firstName'] ?? ''} ${userData['lastName'] ?? ''}'),
+              accountEmail: Text(userData['email'] ?? ''),
+            ),
 
-                  return ListTile(
-                    leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
-                    title: const Text('Zaproszenia do pracy', style: TextStyle(fontWeight: FontWeight.w500)),
-                    // 🔴 Pokaż okrągły, czerwony znacznik z liczbą zaproszeń
-                    trailing: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${snapshot.data!.docs.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => InvitationsScreen(userData: userData),
-                        ),
-                      );
-                    },
+            if (currentRole == 'salon') ...[
+              ListTile(
+                leading: const Icon(Icons.remove_red_eye, color: Colors.deepPurple),
+                title: const Text('EyeMatch AI', style: TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: const Text('Analiza kształtu oczu i dobór rzęs', style: TextStyle(fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const EyeMatchScreen()),
                   );
                 },
               ),
-          ],
+              const Divider(height: 1),
+            ],
 
-          const Spacer(),
+            if (currentRole == 'client') ...[
+              ListTile(
+                leading: const Icon(Icons.calendar_month, color: Colors.pinkAccent),
+                title: const Text('Moje zaplanowane wizyty', style: TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: const Text('Sprawdź swoje rezerwacje w salonach', style: TextStyle(fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => ClientAppointmentsScreen(userData: userData)),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+            ],
 
-          const Divider(height: 1),
+            if (hasBothRoles) ...[
+              if (currentRole == 'salon')
+                ListTile(
+                  leading: const Icon(Icons.person_outline, color: Colors.deepPurple),
+                  title: const Text('Przełącz na profil Klientki'),
+                  onTap: () => _toggleView(context, 'client'),
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.content_cut_outlined, color: Colors.deepPurple),
+                  title: const Text('Przełącz na panel Stylistki'),
+                  onTap: () => _toggleView(context, 'salon'),
+                ),
+            ] else ...[
+              if (currentRole == 'client')
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('invitations')
+                      .where('email', isEqualTo: userData['email'])
+                      .where('status', isEqualTo: 'pending')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
 
-          if (isOwner)
+                    return ListTile(
+                      leading: const Icon(Icons.mail_outline, color: Colors.deepPurple),
+                      title: const Text('Zaproszenia do pracy', style: TextStyle(fontWeight: FontWeight.w500)),
+                      trailing: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '${snapshot.data!.docs.length}',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => InvitationsScreen(userData: userData),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+            ],
+
+            const Spacer(),
+            const Divider(height: 1),
+
+            if (isOwner)
+              ListTile(
+                leading: const Icon(Icons.settings_outlined, color: Colors.black87),
+                title: const Text('Ustawienia Salonu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SalonSettingsScreen(userData: userData),
+                    ),
+                  );
+                },
+              ),
+
             ListTile(
-              leading: const Icon(Icons.settings_outlined, color: Colors.black87),
-              title: const Text('Ustawienia Salonu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+              leading: const Icon(Icons.manage_accounts_outlined, color: Colors.black87),
+              title: const Text('Ustawienia profilu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => SalonSettingsScreen(userData: userData),
+                    builder: (context) => ProfileSettingsScreen(userData: userData),
                   ),
                 );
               },
             ),
 
-          // Ustawienia Profilu (Zawsze na dole)
-          ListTile(
-            leading: const Icon(Icons.manage_accounts_outlined, color: Colors.black87),
-            title: const Text('Ustawienia profilu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileSettingsScreen(userData: userData),
-                ),
-              );
-            },
-          ),
-
-          // Przycisk Wyloguj się
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.redAccent),
-            title: const Text('Wyloguj się', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              FirebaseAuth.instance.signOut();
-            },
-          ),
-          const SizedBox(height: 24),
-        ],
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('Wyloguj się', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(context);
+                FirebaseAuth.instance.signOut();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

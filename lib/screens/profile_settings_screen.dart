@@ -24,7 +24,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     super.initState();
     _firstNameController = TextEditingController(text: widget.userData['firstName'] ?? '');
     _lastNameController = TextEditingController(text: widget.userData['lastName'] ?? '');
-    _phoneController = TextEditingController(text: widget.userData['phoneNumber'] ?? '');
+    // 🚀 POPRAWKA: Pobieramy numer telefonu z poprawnego i ujednoliconego klucza "phone"
+    _phoneController = TextEditingController(text: widget.userData['phone'] ?? widget.userData['phoneNumber'] ?? '');
   }
 
   @override
@@ -48,7 +49,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'firstName': _firstNameController.text.trim(),
         'lastName': _lastNameController.text.trim(),
-        'phoneNumber': _phoneController.text.trim(),
+        // 🚀 POPRAWKA: Zapisujemy numer telefonu pod ujednoliconym kluczem "phone"
+        'phone': _phoneController.text.trim(),
+        // Opcjonalnie: Usunięcie starego błędnego klucza (jeśli istniał) dla zachowania porządku:
+        'phoneNumber': FieldValue.delete(),
       });
 
       if (mounted) {
@@ -246,7 +250,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         await GoogleSignIn().signOut();
       }
 
-// --- ZNAJDŹ TEN FRAGMENT NA SAMYM DOLE METODY _executeAccountDeletion:
       if (mounted) {
         showDialog(
           context: context,
@@ -258,7 +261,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             actions: [
               TextButton(
                 onPressed: () {
-                  // POPRAWKA DLA STRUKTURY Z AUTHGATE:
                   Navigator.pop(context); // 1. Zamyka okienko AlertDialog
                   Navigator.pop(context); // 2. Zamyka ProfileSettingsScreen i odsłania czysty LoginScreen z AuthGate!
                 },

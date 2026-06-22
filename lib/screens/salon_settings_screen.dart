@@ -252,7 +252,7 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
     }
   }
 
-  // 🚀 NOWA METODA: Głębokie usuwanie salonu i powiązanych struktur w Firebase
+  // Głębokie usuwanie salonu i powiązanych struktur w Firebase
   Future<void> _deleteSalonPermanently() async {
     final salonId = widget.userData['salonId'];
     final String targetSalonName = _nameController.text.trim();
@@ -421,210 +421,214 @@ class _SalonSettingsScreenState extends State<SalonSettingsScreen> with SingleTi
           ],
         ),
       ),
-      body: !_isInitialDataLoaded
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
-          : TabBarView(
-        controller: _tabController,
-        children: [
-          // TAB 1: DANE WIZYTÓWKI
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Wizytówka salonu", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.storefront, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                      validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nazwę' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const LinearProgressIndicator(color: Colors.deepPurple);
-                        List<DropdownMenuItem<String>> cityItems = [];
-                        for (var doc in snapshot.data!.docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
-                        }
-                        return DropdownButtonFormField<String>(
-                          value: _selectedCityId,
-                          items: cityItems,
-                          onChanged: (value) => setState(() => _selectedCityId = value),
-                          decoration: InputDecoration(labelText: 'Miejscowość', prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                          validator: (val) => val == null ? 'Wybierz miasto' : null,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextFormField(
-                            controller: _streetController,
-                            decoration: InputDecoration(labelText: 'Ulica', prefixIcon: const Icon(Icons.map_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                            validator: (val) => val == null || val.trim().isEmpty ? 'Podaj ulicę' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 1,
-                          child: TextFormField(
-                            controller: _numberController,
-                            decoration: InputDecoration(labelText: 'Nr lokalu', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                            validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nr' : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _updateSalonData,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz wizytówkę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      // 🚀 ZMIANA: SafeArea chroni tabulatory przed wejściem w strefę pasków Androida (od dołu)
+      body: SafeArea(
+        top: false, // Nie psujemy górnego paska AppBara
+        child: !_isInitialDataLoaded
+            ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+            : TabBarView(
+          controller: _tabController,
+          children: [
+            // TAB 1: DANE WIZYTÓWKI
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Wizytówka salonu", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(labelText: 'Nazwa Salonu', prefixIcon: const Icon(Icons.storefront, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                        validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nazwę' : null,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('cities').orderBy('name').snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const LinearProgressIndicator(color: Colors.deepPurple);
+                          List<DropdownMenuItem<String>> cityItems = [];
+                          for (var doc in snapshot.data!.docs) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            cityItems.add(DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id)));
+                          }
+                          return DropdownButtonFormField<String>(
+                            value: _selectedCityId,
+                            items: cityItems,
+                            onChanged: (value) => setState(() => _selectedCityId = value),
+                            decoration: InputDecoration(labelText: 'Miejscowość', prefixIcon: const Icon(Icons.location_city, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                            validator: (val) => val == null ? 'Wybierz miasto' : null,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: TextFormField(
+                              controller: _streetController,
+                              decoration: InputDecoration(labelText: 'Ulica', prefixIcon: const Icon(Icons.map_outlined, color: Colors.deepPurple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                              validator: (val) => val == null || val.trim().isEmpty ? 'Podaj ulicę' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 1,
+                            child: TextFormField(
+                              controller: _numberController,
+                              decoration: InputDecoration(labelText: 'Nr lokalu', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                              validator: (val) => val == null || val.trim().isEmpty ? 'Podaj nr' : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _updateSalonData,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz wizytówkę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // TAB 2: PANEL USTAWIEŃ GODZIN PRACY
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Godziny otwarcia", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const Text("Zdefiniuj ramy czasowe działania Twojego salonu dla każdego dnia tygodnia.", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView(
-                    children: (() {
-                      final sortedKeys = _openingHours.keys.toList()..sort();
-                      return sortedKeys.map((key) {
-                        return BusinessDayRow(
-                          dayName: _dayLabels[key] ?? key,
-                          dayData: _openingHours[key],
-                          onChanged: (newData) {
-                            setState(() {
-                              _openingHours[key] = newData;
-                            });
-                          },
-                        );
-                      }).toList();
-                    })(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _saveOpeningHours,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz godziny pracy', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // TAB 3: ZESPÓŁ + 🔴 SEKCCJA USUWANIA SALONU NA SAMYM DOLE
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Zarządzanie uprawnieniami", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: widget.userData['salonId']).snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-
-                      List<QueryDocumentSnapshot> employeesDocs = List.from(snapshot.data!.docs);
-
-                      employeesDocs.sort((a, b) {
-                        final dataA = a.data() as Map<String, dynamic>;
-                        final dataB = b.data() as Map<String, dynamic>;
-
-                        bool isOwnerA = dataA['salonRole'] == 'owner';
-                        bool isOwnerB = dataB['salonRole'] == 'owner';
-
-                        if (isOwnerA && !isOwnerB) return -1;
-                        if (!isOwnerA && isOwnerB) return 1;
-
-                        String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
-                        String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
-
-                        int compareNames = nameA.compareTo(nameB);
-                        if (compareNames != 0) return compareNames;
-
-                        String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
-                        String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
-                        return lastNameA.compareTo(lastNameB);
-                      });
-
-                      return ListView.builder(
-                        itemCount: employeesDocs.length,
-                        itemBuilder: (context, index) {
-                          final doc = employeesDocs[index];
-                          final employee = doc.data() as Map<String, dynamic>;
-                          final String fullName = "${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}".trim();
-                          final bool isMeOwner = employee['salonRole'] == 'owner';
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                  backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50],
-                                  child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent)
-                              ),
-                              title: Text(fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text(isMeOwner ? "Właściciel (Ty)" : (employee['email'] ?? '')),
-                              trailing: isMeOwner ? const SizedBox() : IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), onPressed: () => _fireEmployee(doc.id, fullName)),
-                            ),
+            // TAB 2: PANEL USTAWIEŃ GODZIN PRACY
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Godziny otwarcia", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text("Zdefiniuj ramy czasowe działania Twojego salonu dla każdego dnia tygodnia.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView(
+                      children: (() {
+                        final sortedKeys = _openingHours.keys.toList()..sort();
+                        return sortedKeys.map((key) {
+                          return BusinessDayRow(
+                            dayName: _dayLabels[key] ?? key,
+                            dayData: _openingHours[key],
+                            onChanged: (newData) {
+                              setState(() {
+                                _openingHours[key] = newData;
+                              });
+                            },
                           );
-                        },
-                      );
-                    },
-                  ),
-                ),
-
-                // --- 🔴 PRZYCISK KASOWANIA SALONU (ZAWSZE NA SAMYM DOLE LISTY ZESPOŁU) ---
-                const Divider(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _deleteSalonPermanently,
-                    icon: const Icon(Icons.delete_forever_outlined),
-                    label: const Text('Skasuj profil salonu', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[50],
-                      foregroundColor: Colors.redAccent,
-                      elevation: 0,
-                      side: const BorderSide(color: Colors.redAccent, width: 1),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        }).toList();
+                      })(),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _saveOpeningHours,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Zapisz godziny pracy', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+
+            // TAB 3: ZESPÓŁ + SEKCCJA USUWANIA SALONU NA SAMYM DOLE
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Zarządzanie uprawnieniami", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: widget.userData['salonId']).snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
+
+                        List<QueryDocumentSnapshot> employeesDocs = List.from(snapshot.data!.docs);
+
+                        employeesDocs.sort((a, b) {
+                          final dataA = a.data() as Map<String, dynamic>;
+                          final dataB = b.data() as Map<String, dynamic>;
+
+                          bool isOwnerA = dataA['salonRole'] == 'owner';
+                          bool isOwnerB = dataB['salonRole'] == 'owner';
+
+                          if (isOwnerA && !isOwnerB) return -1;
+                          if (!isOwnerA && isOwnerB) return 1;
+
+                          String nameA = (dataA['firstName'] ?? '').toString().toLowerCase();
+                          String nameB = (dataB['firstName'] ?? '').toString().toLowerCase();
+
+                          int compareNames = nameA.compareTo(nameB);
+                          if (compareNames != 0) return compareNames;
+
+                          String lastNameA = (dataA['lastName'] ?? '').toString().toLowerCase();
+                          String lastNameB = (dataB['lastName'] ?? '').toString().toLowerCase();
+                          return lastNameA.compareTo(lastNameB);
+                        });
+
+                        return ListView.builder(
+                          itemCount: employeesDocs.length,
+                          itemBuilder: (context, index) {
+                            final doc = employeesDocs[index];
+                            final employee = doc.data() as Map<String, dynamic>;
+                            final String fullName = "${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}".trim();
+                            final bool isMeOwner = employee['salonRole'] == 'owner';
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                    backgroundColor: isMeOwner ? Colors.amber[100] : Colors.red[50],
+                                    child: Icon(isMeOwner ? Icons.star : Icons.person, color: isMeOwner ? Colors.amber[800] : Colors.redAccent)
+                                ),
+                                title: Text(fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(isMeOwner ? "Właściciel (Ty)" : (employee['email'] ?? '')),
+                                trailing: isMeOwner ? const SizedBox() : IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), onPressed: () => _fireEmployee(doc.id, fullName)),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+
+                  // --- PRZYCISK KASOWANIA SALONU (ZAWSZE NA SAMYM DOLE LISTY ZESPOŁU) ---
+                  const Divider(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _deleteSalonPermanently,
+                      icon: const Icon(Icons.delete_forever_outlined),
+                      label: const Text('Skasuj profil salonu', style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red[50],
+                        foregroundColor: Colors.redAccent,
+                        elevation: 0,
+                        side: const BorderSide(color: Colors.redAccent, width: 1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
