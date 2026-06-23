@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Niezbędne do formatowania tekstu
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -59,10 +60,10 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'firstName': _capitalize(firstName), // <--- Tutaj używamy naszej funkcji
-          'lastName': _capitalize(lastName),   // <--- Tutaj też
+          'firstName': _capitalize(firstName),
+          'lastName': _capitalize(lastName),
           'phone': phone.trim(),
-          'email': user.email?.toLowerCase().trim(), // Maile zawsze z małych
+          'email': user.email?.toLowerCase().trim(),
           'roles': _selectedRole == 'salon' ? ['client', 'salon'] : ['client'],
           'currentView': _selectedRole,
           'createdAt': FieldValue.serverTimestamp(),
@@ -107,9 +108,12 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // POLE IMIĘ
+                // 🚀 POLE IMIĘ (Obowiązkowe, bez cyfr)
                 TextFormField(
                   controller: _firstNameController,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.deny(RegExp(r'[0-9]')), // BLOKUJE WPISYWANIE CYFR
+                  ],
                   decoration: InputDecoration(
                     labelText: 'Imię',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -118,9 +122,12 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // POLE NAZWISKO
+                // 🚀 POLE NAZWISKO (Obowiązkowe, bez cyfr)
                 TextFormField(
                   controller: _lastNameController,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.deny(RegExp(r'[0-9]')), // BLOKUJE WPISYWANIE CYFR
+                  ],
                   decoration: InputDecoration(
                     labelText: 'Nazwisko',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -129,15 +136,26 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // POLE TELEFON
+                // 🚀 POLE TELEFON (Obowiązkowe, tylko cyfry, min 9 znaków)
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly, // BLOKUJE WPISYWANIE LITER I ZNAKÓW
+                  ],
                   decoration: InputDecoration(
                     labelText: 'Numer telefonu',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Wpisz numer telefonu' : null,
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Wpisz numer telefonu';
+                    }
+                    if (val.trim().length < 9) {
+                      return 'Numer musi składać się z przynajmniej 9 cyfr';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 24),
 

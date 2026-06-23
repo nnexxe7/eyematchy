@@ -557,7 +557,22 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
   Future<void> _sendInvitation() async {
     final email = _emailController.text.trim().toLowerCase();
-    if (email.isEmpty) return;
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Proszę wpisać adres e-mail.'), backgroundColor: Colors.redAccent)
+      );
+      return;
+    }
+
+    // 🚀 DODANE: Walidacja formatu adresu e-mail za pomocą wyrażenia regularnego (Regex)
+    final bool isEmailValid = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(email);
+    if (!isEmailValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wpisany tekst nie wygląda na poprawny adres e-mail!'), backgroundColor: Colors.redAccent)
+      );
+      return;
+    }
 
     final mySalonId = widget.userData['salonId'];
     final mySalonName = widget.userData['salonName'] ?? "Twój Salon";
