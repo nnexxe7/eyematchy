@@ -12,7 +12,6 @@ class ClientAppointmentsScreen extends StatefulWidget {
 
 class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
 
-  // --- LOGIKA POMOCNICZA: Parsowanie daty i czasu do obiektu DateTime ---
   DateTime _parseDateTime(String date, String time) {
     try {
       final dateParts = date.split('-');
@@ -29,17 +28,12 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
     }
   }
 
-  // --- 🔴 ODWOŁANIE WIZYTY ---
   Future<void> _cancelAppointment(String appointmentId, String serviceName) async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Odwołanie wizyty'),
-          ],
+          children: [Icon(Icons.warning_amber_rounded, color: Colors.redAccent), SizedBox(width: 8), Text('Odwołanie wizyty')],
         ),
         content: Text('Czy na pewno chcesz odwołać wizytę: "$serviceName"?\nTej operacji nie można cofnąć.'),
         actions: [
@@ -57,34 +51,37 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
 
     try {
       await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).delete();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wizyta została pomyślnie odwołana.'), backgroundColor: Colors.black87),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wizyta została pomyślnie odwołana.'), backgroundColor: Colors.black87));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd odwoływania wizyty: $e'), backgroundColor: Colors.redAccent),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd odwoływania wizyty: $e'), backgroundColor: Colors.redAccent));
     }
   }
 
-  // --- 📅 ZMIANA TERMINU WIZYTY (WYŚWIETLENIE MODALA Z WYBOREM) ---
   void _rescheduleAppointment(String appointmentId, Map<String, dynamic> appointmentData) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _RescheduleBottomSheet(
+      builder: (context) => _RescheduleBottomSheet(appointmentId: appointmentId, appointmentData: appointmentData),
+    );
+  }
+
+  // 🚀 NOWE: Funkcja otwierająca modal oceniania
+  void _rateAppointment(String appointmentId, String salonId, String serviceName, String employeeName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _RatingBottomSheet(
         appointmentId: appointmentId,
-        appointmentData: appointmentData,
+        salonId: salonId,
+        serviceName: serviceName,
+        employeeName: employeeName,
+        clientName: widget.userData['firstName'] ?? 'Klientka',
       ),
     );
   }
 
-  // --- KOMPONENT WIDOKU: Budowa listy dla konkretnej zakładki ---
   Widget _buildAppointmentsList(List<QueryDocumentSnapshot> docs, String emptyMessage, bool isUpcoming) {
     if (docs.isEmpty) {
       return Center(
@@ -93,10 +90,7 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
           children: [
             Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text(
-              emptyMessage,
-              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            ),
+            Text(emptyMessage, style: TextStyle(color: Colors.grey[600], fontSize: 16)),
           ],
         ),
       );
@@ -110,6 +104,7 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
         final appointmentId = doc.id;
         final appointment = doc.data() as Map<String, dynamic>;
 
+        final String salonId = appointment['salonId'] ?? '';
         final String salonName = appointment['salonName'] ?? 'Nieznany Salon';
         final String serviceName = appointment['serviceName'] ?? 'Usługa';
         final String employeeId = appointment['employeeId'] ?? '';
@@ -118,6 +113,11 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
         final String time = appointment['time'] ?? '';
         final double price = (appointment['price'] as num?)?.toDouble() ?? 0.0;
         final int duration = appointment['duration'] ?? 30;
+
+        // Dane oceny
+        final bool isRated = appointment['isRated'] ?? false;
+        final int rating = appointment['rating'] ?? 0;
+        final String review = appointment['review'] ?? '';
 
         String displayDate = date;
         try {
@@ -139,39 +139,22 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: Text(
-                        salonName,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                      ),
-                    ),
+                    Expanded(child: Text(salonName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.pink[50],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${price.toStringAsFixed(2)} zł',
-                        style: const TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
+                      decoration: BoxDecoration(color: Colors.pink[50], borderRadius: BorderRadius.circular(20)),
+                      child: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  serviceName,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.deepPurple),
-                ),
+                Text(serviceName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.deepPurple)),
                 const Divider(height: 24),
                 Row(
                   children: [
-                    Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 6),
-                    Text('$time ($duration min)', style: TextStyle(color: Colors.grey[700])),
-                    const SizedBox(width: 20),
-                    Icon(Icons.calendar_month, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 6),
+                    Icon(Icons.access_time, size: 16, color: Colors.grey[600]), const SizedBox(width: 6),
+                    Text('$time ($duration min)', style: TextStyle(color: Colors.grey[700])), const SizedBox(width: 20),
+                    Icon(Icons.calendar_month, size: 16, color: Colors.grey[600]), const SizedBox(width: 6),
                     Text(displayDate, style: TextStyle(color: Colors.grey[700])),
                   ],
                 ),
@@ -181,7 +164,6 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
                   future: FirebaseFirestore.instance.collection('users').doc(employeeId).get(),
                   builder: (context, empSnapshot) {
                     String finalEmployeeName = fallbackEmployeeName;
-
                     if (empSnapshot.hasData && empSnapshot.data!.exists) {
                       final empData = empSnapshot.data!.data() as Map<String, dynamic>;
                       final String firstName = empData['firstName'] ?? fallbackEmployeeName;
@@ -189,17 +171,60 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
                       finalEmployeeName = lastName.isNotEmpty ? "$firstName $lastName" : firstName;
                     }
 
-                    return Row(
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.person_outline, size: 16, color: Colors.grey[600]),
-                        const SizedBox(width: 6),
-                        Text('Stylistka: $finalEmployeeName', style: TextStyle(color: Colors.grey[700])),
+                        Row(
+                          children: [
+                            Icon(Icons.person_outline, size: 16, color: Colors.grey[600]), const SizedBox(width: 6),
+                            Text('Stylistka: $finalEmployeeName', style: TextStyle(color: Colors.grey[700])),
+                          ],
+                        ),
+
+                        // 🚀 AKCJE DLA WIZYT ZAKOŃCZONYCH (OCENIANIE)
+                        if (!isUpcoming) ...[
+                          const SizedBox(height: 16),
+                          if (isRated)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[200]!)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text('Twoja ocena: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                      Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 16))),
+                                    ],
+                                  ),
+                                  if (review.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text('"$review"', style: TextStyle(fontSize: 13, color: Colors.grey[700], fontStyle: FontStyle.italic)),
+                                  ]
+                                ],
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _rateAppointment(appointmentId, salonId, serviceName, finalEmployeeName),
+                                icon: const Icon(Icons.star_outline),
+                                label: const Text('Oceń tę wizytę'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber[700],
+                                  side: BorderSide(color: Colors.amber[700]!),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                        ],
                       ],
                     );
                   },
                 ),
 
-                // 🚀 AKCJE DLA NADCHODZĄCYCH WIZYT
+                // AKCJE DLA NADCHODZĄCYCH WIZYT
                 if (isUpcoming) ...[
                   const Divider(height: 24),
                   Row(
@@ -217,8 +242,7 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
                         icon: const Icon(Icons.edit_calendar, size: 18),
                         label: const Text('Zmień termin'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.pinkAccent,
-                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
@@ -246,42 +270,23 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
           backgroundColor: Colors.pinkAccent,
           foregroundColor: Colors.white,
           bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            indicatorSize: TabBarIndicatorSize.tab,
-            tabs: [
-              Tab(text: "Nadchodzące"),
-              Tab(text: "Historia"),
-            ],
+            labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: Colors.white,
+            tabs: [Tab(text: "Nadchodzące"), Tab(text: "Historia")],
           ),
         ),
         body: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('appointments')
-              .where('clientId', isEqualTo: user.uid)
-              .snapshots(),
+          stream: FirebaseFirestore.instance.collection('appointments').where('clientId', isEqualTo: user.uid).snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
-            }
-
-            if (snapshot.hasError) {
-              return Center(
-                child: Text('Błąd pobierania danych:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
-              );
-            }
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+            if (snapshot.hasError) return const Center(child: Text('Błąd pobierania danych', style: TextStyle(color: Colors.red)));
 
             final List<QueryDocumentSnapshot> docs = snapshot.data?.docs.toList() ?? [];
 
             docs.sort((a, b) {
               final dataA = a.data() as Map<String, dynamic>;
               final dataB = b.data() as Map<String, dynamic>;
-
               int dateComparison = (dataA['date'] ?? '').compareTo(dataB['date'] ?? '');
-              if (dateComparison == 0) {
-                return (dataA['time'] ?? '').compareTo(dataB['time'] ?? '');
-              }
+              if (dateComparison == 0) return (dataA['time'] ?? '').compareTo(dataB['time'] ?? '');
               return dateComparison;
             });
 
@@ -292,12 +297,7 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
             for (var doc in docs) {
               final data = doc.data() as Map<String, dynamic>;
               final DateTime appointmentTime = _parseDateTime(data['date'] ?? '', data['time'] ?? '');
-
-              if (appointmentTime.isBefore(now)) {
-                pastAppointments.add(doc);
-              } else {
-                upcomingAppointments.add(doc);
-              }
+              if (appointmentTime.isBefore(now)) pastAppointments.add(doc); else upcomingAppointments.add(doc);
             }
 
             pastAppointments = pastAppointments.reversed.toList();
@@ -310,6 +310,146 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// KOMPONENT OCENIANIA WIZYTY
+// ============================================================================
+class _RatingBottomSheet extends StatefulWidget {
+  final String appointmentId;
+  final String salonId;
+  final String serviceName;
+  final String employeeName;
+  final String clientName;
+
+  const _RatingBottomSheet({required this.appointmentId, required this.salonId, required this.serviceName, required this.employeeName, required this.clientName});
+
+  @override
+  State<_RatingBottomSheet> createState() => _RatingBottomSheetState();
+}
+
+class _RatingBottomSheetState extends State<_RatingBottomSheet> {
+  int _currentRating = 0;
+  final TextEditingController _reviewController = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _submitRating() async {
+    if (_currentRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Proszę wybrać ilość gwiazdek!'), backgroundColor: Colors.redAccent));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final salonRef = FirebaseFirestore.instance.collection('salons').doc(widget.salonId);
+      final appointmentRef = FirebaseFirestore.instance.collection('appointments').doc(widget.appointmentId);
+
+      // Transakcja, aby bezpiecznie obliczyć nową średnią dla salonu
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final salonSnapshot = await transaction.get(salonRef);
+        if (!salonSnapshot.exists) throw Exception("Nie znaleziono salonu");
+
+        final salonData = salonSnapshot.data()!;
+        int currentCount = salonData['ratingCount'] ?? 0;
+        double currentAvg = (salonData['averageRating'] as num?)?.toDouble() ?? 0.0;
+
+        // Obliczanie nowej średniej
+        double newAvg = ((currentAvg * currentCount) + _currentRating) / (currentCount + 1);
+
+        transaction.update(salonRef, {
+          'ratingCount': currentCount + 1,
+          'averageRating': newAvg,
+        });
+
+        transaction.update(appointmentRef, {
+          'isRated': true,
+          'rating': _currentRating,
+          'review': _reviewController.text.trim(),
+          'clientNameForReview': widget.clientName, // Zapisujemy kto dodał opinię
+          'ratedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dziękujemy za ocenę!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu: $e'), backgroundColor: Colors.redAccent));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25))
+      ),
+      // 🚀 POPRAWKA: Dodano `MediaQuery.of(context).padding.bottom`, aby unieść przycisk nad pasek systemowy!
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
+          top: 12, left: 24, right: 24
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(height: 5, width: 40, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+          const SizedBox(height: 16),
+          const Text('Oceń wizytę', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('${widget.serviceName} u: ${widget.employeeName}', style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              return IconButton(
+                iconSize: 45,
+                icon: Icon(
+                  index < _currentRating ? Icons.star : Icons.star_border,
+                  color: Colors.amber,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _currentRating = index + 1;
+                  });
+                },
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reviewController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Napisz kilka słów (opcjonalnie)...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submitRating,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber[700],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Zapisz opinię', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -357,7 +497,6 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
       final int duration = widget.appointmentData['duration'];
       final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
 
-      // 1. Walidacja godzin zamknięcia salonu
       List<String> newTimeParts = _selectedTime!.split(':');
       int newStartMin = (int.tryParse(newTimeParts[0]) ?? 0) * 60 + (int.tryParse(newTimeParts[1]) ?? 0);
       int newEndMin = newStartMin + duration;
@@ -387,7 +526,6 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
         }
       }
 
-      // 2. Walidacja kolizji z innymi wizytami
       final existingAppointments = await FirebaseFirestore.instance
           .collection('appointments')
           .where('salonId', isEqualTo: salonId)
@@ -421,7 +559,6 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
         return;
       }
 
-      // 3. Zapis zmian
       await FirebaseFirestore.instance.collection('appointments').doc(widget.appointmentId).update({
         'date': formattedDateStr,
         'time': _selectedTime,
@@ -443,7 +580,6 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // 🚀 POBIERANIE DANYCH O USŁUDZE DO WYŚWIETLENIA
     final String serviceName = widget.appointmentData['serviceName'] ?? 'Usługa';
     final int duration = widget.appointmentData['duration'] ?? 30;
 
@@ -465,26 +601,16 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
                     children: [
                       const Text('Zmień termin', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
-                      // 🚀 DODANE: Informacja o nazwie usługi i czasie trwania
-                      Text(
-                          '$serviceName • Czas: $duration min',
-                          style: const TextStyle(fontSize: 14, color: Colors.pinkAccent, fontWeight: FontWeight.w500)
-                      ),
+                      Text('$serviceName • Czas: $duration min', style: const TextStyle(fontSize: 14, color: Colors.pinkAccent, fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ),
-                IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context)
-                ),
+                IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
           ),
           const Divider(),
 
-          // WIDGET WYBORU DATY (Poziomy scroll)
           Container(
             height: 90, color: Colors.white,
             child: ListView.builder(
@@ -517,7 +643,6 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
           ),
           const Divider(),
 
-          // GŁÓWNA SIATKA
           Expanded(
             child: StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('salons').doc(widget.appointmentData['salonId']).snapshots(),
@@ -556,12 +681,7 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
 
                     return GridView.builder(
                       padding: const EdgeInsets.all(16),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        childAspectRatio: 2.5,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                      ),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2.5, crossAxisSpacing: 10, mainAxisSpacing: 10),
                       itemCount: 56,
                       itemBuilder: (context, index) {
                         int currentMinutes = (7 * 60) + (index * 15);
@@ -603,11 +723,7 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
                             alignment: Alignment.center,
                             child: Text(
                               formattedTime,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isDisabled ? Colors.grey[400] : (isSelected ? Colors.white : Colors.pinkAccent),
-                                decoration: isDisabled && !isSlotClosed ? TextDecoration.lineThrough : null,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.bold, color: isDisabled ? Colors.grey[400] : (isSelected ? Colors.white : Colors.pinkAccent), decoration: isDisabled && !isSlotClosed ? TextDecoration.lineThrough : null),
                             ),
                           ),
                         );
@@ -633,12 +749,7 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
                         children: [
                           const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                          ),
+                          Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13))),
                         ],
                       ),
                     ),
@@ -648,14 +759,8 @@ class _RescheduleBottomSheetState extends State<_RescheduleBottomSheet> {
                     height: 52,
                     child: ElevatedButton(
                       onPressed: (_selectedTime == null || _isLoading) ? null : _updateAppointmentTime,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.pinkAccent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text('Potwierdź zmianę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Potwierdź zmianę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],

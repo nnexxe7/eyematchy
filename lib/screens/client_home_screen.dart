@@ -12,10 +12,8 @@ class ClientHomeScreen extends StatefulWidget {
 }
 
 class _ClientHomeScreenState extends State<ClientHomeScreen> {
-  // Zmienne nawigacji wewnętrznej (Kreator rezerwacji)
-  int _currentStep = 1; // 1: Lista salonów, 2: Kalendarz, 3: Usługi
+  int _currentStep = 1;
 
-  // Dane wybrane w trakcie procesu
   String? _selectedCityId;
   String? _selectedSalonId;
   String? _selectedSalonName;
@@ -24,14 +22,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   String? _selectedEmployeeName;
   String? _selectedTime;
 
-  // 🚀 DODANE: Kontrolery do synchronizacji przewijania nagłówka z siatką
   final ScrollController _headerScrollController = ScrollController();
   final ScrollController _gridScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    // Synchronizacja przesuwania w poziomie (nagłówek podąża za siatką)
     _gridScrollController.addListener(() {
       if (_headerScrollController.hasClients && _gridScrollController.hasClients) {
         if (_headerScrollController.offset != _gridScrollController.offset) {
@@ -48,11 +44,141 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     super.dispose();
   }
 
-  // --- OBSŁUGA COFANIA (PRZYCISK SYSTEMOWY I STRZAŁKA) ---
   void _handleBack() {
     if (_currentStep > 1) {
       setState(() => _currentStep--);
     }
+  }
+
+  // 🚀 ZMIANA: Zaktualizowana funkcja wyświetlająca opinie (naprawiony błąd indeksu Firebase)
+  void _showReviewsBottomSheet(String salonId, String salonName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.8,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+          ),
+          child: Column(
+            children: [
+              Container(height: 5, width: 40, margin: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text('Opinie o: $salonName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  // 🚀 POPRAWKA: Usunięto .orderBy, żeby nie blokowało bazy brakiem indeksu!
+                  stream: FirebaseFirestore.instance
+                      .collection('appointments')
+                      .where('salonId', isEqualTo: salonId)
+                      .where('isRated', isEqualTo: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text('Błąd ładowania opinii:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent))));
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+                    }
+
+                    // 🚀 LOKALNE SORTOWANIE (od najnowszych opinii)
+                    List<QueryDocumentSnapshot> reviewDocs = List.from(snapshot.data!.docs);
+                    reviewDocs.sort((a, b) {
+                      final dataA = a.data() as Map<String, dynamic>;
+                      final dataB = b.data() as Map<String, dynamic>;
+                      final Timestamp? tA = dataA['ratedAt'] as Timestamp?;
+                      final Timestamp? tB = dataB['ratedAt'] as Timestamp?;
+
+                      if (tA == null && tB == null) return 0;
+                      if (tA == null) return 1;
+                      if (tB == null) return -1;
+                      return tB.compareTo(tA);
+                    });
+
+                    if (reviewDocs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey[300]),
+                            const SizedBox(height: 16),
+                            Text('Ten salon nie ma jeszcze żadnych opinii.', style: TextStyle(color: Colors.grey[600])),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: reviewDocs.length,
+                      itemBuilder: (context, index) {
+                        final data = reviewDocs[index].data() as Map<String, dynamic>;
+                        final int rating = data['rating'] ?? 5;
+                        final String review = data['review'] ?? '';
+                        final String clientName = data['clientNameForReview'] ?? 'Anonim';
+                        final String serviceName = data['serviceName'] ?? 'Usługa';
+                        final String employeeName = data['employeeName'] ?? 'Stylistka'; // 🚀 Pobranie stylistki
+                        final Timestamp? ratedAt = data['ratedAt'] as Timestamp?;
+                        final String dateStr = ratedAt != null ? "${ratedAt.toDate().day.toString().padLeft(2, '0')}.${ratedAt.toDate().month.toString().padLeft(2, '0')}.${ratedAt.toDate().year}" : '';
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 0,
+                          color: Colors.grey[50],
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                    Text(dateStr, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                // 1. Gwiazdki
+                                Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
+                                const SizedBox(height: 6),
+                                // 2. Stylistka
+                                Text("Stylistka: $employeeName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
+                                // 3. Usługa
+                                Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                // 4. Opis
+                                if (review.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(review, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -70,13 +196,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
         final String firstName = liveUserData['firstName'] ?? 'Klient';
 
-        // Tytuły paska AppBar zależne od aktualnego kroku
         String appBarTitle = 'Znajdź Salon';
         if (_currentStep == 2) appBarTitle = _selectedSalonName ?? 'Wybierz termin';
         if (_currentStep == 3) appBarTitle = 'Wybierz usługę - $_selectedEmployeeName';
 
         return PopScope(
-          canPop: _currentStep == 1, // Pozwól wyjść z ekranu tylko na kroku 1
+          canPop: _currentStep == 1,
           onPopInvokedWithResult: (didPop, result) {
             if (!didPop) _handleBack();
           },
@@ -87,7 +212,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               foregroundColor: Colors.white,
               leading: _currentStep > 1
                   ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack)
-                  : null, // Na kroku 1 standardowo pokaże się menu Drawer
+                  : null,
             ),
             drawer: _currentStep == 1 ? AppDrawer(userData: liveUserData, currentRole: 'client') : null,
             body: IndexedStack(
@@ -104,9 +229,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     );
   }
 
-  // =========================================================================
-  // KROK 1: WYBÓR MIASTA I LISTA SALONÓW
-  // =========================================================================
   Widget _buildStep1SalonsList(String firstName) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -175,6 +297,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                     final String address = salon['address'] ?? 'Brak adresu';
                     final List<dynamic> emps = salon['employees'] ?? [];
 
+                    final int ratingCount = salon['ratingCount'] ?? 0;
+                    final double avgRating = (salon['averageRating'] as num?)?.toDouble() ?? 0.0;
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -192,7 +317,25 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+
+                                          // 🚀 POPRAWKA: Ocena bez InkWell (nieklikalna, służy tylko jako informacja)
+                                          if (ratingCount > 0)
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.star, color: Colors.amber, size: 18), // Minimalnie powiększona gwiazdka dla lepszego wyglądu bez tła
+                                                const SizedBox(width: 4),
+                                                Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                                Text(' ($ratingCount)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                              ],
+                                            )
+                                          else
+                                            const Text('Nowy', style: TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                                        ],
+                                      ),
                                       const SizedBox(height: 4),
                                       Row(children: [const Icon(Icons.location_on, size: 14, color: Colors.grey), const SizedBox(width: 4), Expanded(child: Text(address, style: const TextStyle(color: Colors.grey), overflow: TextOverflow.ellipsis))]),
                                     ],
@@ -204,13 +347,24 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Zespół: ${emps.length} os.', style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                                Expanded(child: Text('Zespół: ${emps.length} os.', style: const TextStyle(color: Colors.black54, fontSize: 13))),
+
+                                // 🚀 NOWE: Przycisk "Pokaż opinie" dodany obok przycisku "Zarezerwuj"
+                                if (ratingCount > 0) ...[
+                                  TextButton(
+                                    onPressed: () => _showReviewsBottomSheet(doc.id, name),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.pinkAccent, padding: const EdgeInsets.symmetric(horizontal: 8)),
+                                    child: const Text('Pokaż opinie', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
                                       _selectedSalonId = doc.id;
                                       _selectedSalonName = name;
-                                      _currentStep = 2; // Przepychamy do kroku kalendarza
+                                      _currentStep = 2;
                                     });
                                   },
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -233,7 +387,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   }
 
   // =========================================================================
-  // KROK 2: DYNAMICZNY KALENDARZ Z PRZYKLEJONYM NAGŁÓWKIEM (STICKY HEADER)
+  // KROK 2: DYNAMICZNY KALENDARZ Z PRZYKLEJONYM NAGŁÓWKIEM
   // =========================================================================
   Widget _buildStep2CalendarGrid() {
     if (_selectedSalonId == null) return const SizedBox();
@@ -301,7 +455,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                 return Column(
                   children: [
-                    // --- WYBIERAK DATY (Zawsze na górze) ---
                     Container(
                       height: 90, color: Colors.white,
                       child: ListView.builder(
@@ -339,27 +492,20 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                             return Column(
                               children: [
-                                // 🚀 1. STICKY HEADER: Wiersz z nazwiskami, przyklejony do góry
                                 Row(
                                   children: [
-                                    // Puste miejsce nad kolumną z czasem
                                     Container(
-                                      width: 60,
-                                      height: 50,
+                                      width: 60, height: 50,
                                       decoration: BoxDecoration(
                                         color: Colors.grey[100],
-                                        border: Border(
-                                          bottom: BorderSide(color: Colors.grey[300]!, width: 1),
-                                          right: BorderSide(color: Colors.grey[300]!, width: 0.5),
-                                        ),
+                                        border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1), right: BorderSide(color: Colors.grey[300]!, width: 0.5)),
                                       ),
                                     ),
-                                    // Przewijana lista nazwisk pracowników
                                     Expanded(
                                       child: SingleChildScrollView(
                                         controller: _headerScrollController,
                                         scrollDirection: Axis.horizontal,
-                                        physics: const NeverScrollableScrollPhysics(), // Scrolluje się automatycznie razem z siatką
+                                        physics: const NeverScrollableScrollPhysics(),
                                         child: Row(
                                           children: employees.map((emp) {
                                             final eData = emp.data() as Map<String, dynamic>;
@@ -367,34 +513,17 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                             final String lastName = eData['lastName'] ?? '';
 
                                             return Container(
-                                              width: columnWidth,
-                                              height: 50,
-                                              padding: const EdgeInsets.symmetric(vertical: 6),
-                                              alignment: Alignment.center,
+                                              width: columnWidth, height: 50, padding: const EdgeInsets.symmetric(vertical: 6), alignment: Alignment.center,
                                               decoration: BoxDecoration(
                                                 color: Colors.grey[100],
-                                                border: Border(
-                                                  bottom: BorderSide(color: Colors.grey[300]!, width: 1),
-                                                  left: BorderSide(color: Colors.grey[300]!, width: 0.5),
-                                                ),
+                                                border: Border(bottom: BorderSide(color: Colors.grey[300]!, width: 1), left: BorderSide(color: Colors.grey[300]!, width: 0.5)),
                                               ),
                                               child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.center,
                                                 children: [
-                                                  Text(
-                                                    firstName,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent),
-                                                  ),
+                                                  Text(firstName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.pinkAccent)),
                                                   if (lastName.isNotEmpty)
-                                                    Text(
-                                                      lastName,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.pinkAccent.withOpacity(0.8)),
-                                                    ),
+                                                    Text(lastName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w400, fontSize: 10, color: Colors.pinkAccent.withOpacity(0.8))),
                                                 ],
                                               ),
                                             );
@@ -405,13 +534,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   ],
                                 ),
 
-                                // 🚀 2. GŁÓWNA SIATKA (WIZYTY I GODZINY): Przewijana w dół
                                 Expanded(
                                   child: SingleChildScrollView(
                                     child: Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        // Zamrożona kolumna z godzinami (Scrolluje się tylko góra-dół)
                                         SizedBox(
                                           width: 60,
                                           child: Column(
@@ -424,34 +551,16 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                               bool isFullHour = minute == 0;
 
                                               return Container(
-                                                width: 60,
-                                                height: 55,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white,
-                                                  border: Border(
-                                                    right: BorderSide(color: Colors.grey[300]!, width: 0.5),
-                                                    bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0),
-                                                  ),
-                                                ),
+                                                width: 60, height: 55,
+                                                decoration: BoxDecoration(color: Colors.white, border: Border(right: BorderSide(color: Colors.grey[300]!, width: 0.5), bottom: BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.transparent, width: isFullHour ? 0.8 : 0.0))),
                                                 child: Stack(
                                                   clipBehavior: Clip.none,
                                                   children: [
                                                     Positioned(
-                                                      left: 0,
-                                                      right: 0,
-                                                      top: -6,
+                                                      left: 0, right: 0, top: -6,
                                                       child: Container(
                                                         alignment: Alignment.center,
-                                                        child: Text(
-                                                          formattedTime,
-                                                          textAlign: TextAlign.center,
-                                                          style: TextStyle(
-                                                            fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400,
-                                                            color: isSlotClosed ? Colors.grey[400] : Colors.black87,
-                                                            fontSize: 11,
-                                                            height: 1.0,
-                                                          ),
-                                                        ),
+                                                        child: Text(formattedTime, textAlign: TextAlign.center, style: TextStyle(fontWeight: isFullHour ? FontWeight.bold : FontWeight.w400, color: isSlotClosed ? Colors.grey[400] : Colors.black87, fontSize: 11, height: 1.0)),
                                                       ),
                                                     ),
                                                   ],
@@ -460,8 +569,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                             }),
                                           ),
                                         ),
-
-                                        // Przewijana siatka wizyt (Scrolluje się góra-dół oraz na boki)
                                         Expanded(
                                           child: SingleChildScrollView(
                                             controller: _gridScrollController,
@@ -511,15 +618,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                       return Container(
                                                         height: 55,
                                                         decoration: BoxDecoration(
-                                                          color: isAlreadyBooked
-                                                              ? Colors.red[50]
-                                                              : (isSlotClosed ? Colors.grey[200]! : Colors.white),
-                                                          border: Border(
-                                                            left: BorderSide(color: Colors.grey[200]!, width: 0.5),
-                                                            bottom: drawBottomBorder
-                                                                ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5)
-                                                                : BorderSide.none,
-                                                          ),
+                                                          color: isAlreadyBooked ? Colors.red[50] : (isSlotClosed ? Colors.grey[200]! : Colors.white),
+                                                          border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5), bottom: drawBottomBorder ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5) : BorderSide.none),
                                                         ),
                                                         child: InkWell(
                                                           onTap: shouldBlock ? null : () {
@@ -531,17 +631,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                             });
                                                           },
                                                           child: isAlreadyBooked
-                                                              ? Center(
-                                                            child: isStartOfBooking
-                                                                ? const Text(
-                                                              'Zajęte',
-                                                              style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
-                                                            )
-                                                                : const SizedBox.shrink(),
-                                                          )
-                                                              : (isSlotClosed && isFullHour
-                                                              ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26))
-                                                              : const SizedBox.expand()),
+                                                              ? Center(child: isStartOfBooking ? const Text('Zajęte', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)) : const SizedBox.shrink())
+                                                              : (isSlotClosed && isFullHour ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26)) : const SizedBox.expand()),
                                                         ),
                                                       );
                                                     }),
@@ -678,14 +769,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
           if (newEndMin > closeInMinutes) {
             if (mounted) {
-              Navigator.pop(context); // Zamknij loader
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Zabieg jest za długi i skończyłby się po godzinach otwarcia salonu! Wybierz inną godzinę.'),
-                  backgroundColor: Colors.redAccent,
-                  duration: Duration(seconds: 4),
-                ),
-              );
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zabieg jest za długi i skończyłby się po godzinach otwarcia salonu! Wybierz inną godzinę.'), backgroundColor: Colors.redAccent, duration: Duration(seconds: 4)));
             }
             return;
           }
@@ -715,14 +800,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
       if (hasOverlap) {
         if (mounted) {
-          Navigator.pop(context); // Zamknij loader
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Niestety, wybrany zabieg jest za długi na to "okienko" czasowe i nakłada się na inną wizytę. Wybierz inną godzinę!'),
-              backgroundColor: Colors.redAccent,
-              duration: Duration(seconds: 4),
-            ),
-          );
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Niestety, wybrany zabieg jest za długi na to "okienko" czasowe i nakłada się na inną wizytę. Wybierz inną godzinę!'), backgroundColor: Colors.redAccent, duration: Duration(seconds: 4)));
         }
         return;
       }
@@ -740,13 +819,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
         'price': sPrice,
         'duration': sDuration,
         'createdAt': FieldValue.serverTimestamp(),
+        'isRated': false,
+        'rating': 0,
+        'review': '',
       });
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Rezerwacja udana! Zapisano Cię na $sName.'), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rezerwacja udana! Zapisano Cię na $sName.'), backgroundColor: Colors.green));
         setState(() {
           _currentStep = 1;
         });
