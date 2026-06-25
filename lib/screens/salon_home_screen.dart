@@ -982,90 +982,84 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               ),
 
               // 🚀 TAB 4: OPINIE O SALONIE (WIDOK DLA STYLISTKI/WŁAŚCICIELA)
-              StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance.collection('salons').doc(liveUserData['salonId']).snapshots(),
-                builder: (context, salonSnapshot) {
-                  // 🚀 POPRAWKA: Usunięto złośliwe kółko ładowania blokujące cały ekran!
-                  // UI renderuje się od razu, co eliminuje mruganie przy przełączaniu zakładek.
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .where('salonId', isEqualTo: liveUserData['salonId'])
+                    .snapshots(),
+                builder: (context, empSnapshot) {
+                  if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                  int ratingCount = 0;
-                  double avgRating = 0.0;
+                  // Lista pracowników do filtra
+                  final employees = empSnapshot.data!.docs;
 
-                  if (salonSnapshot.hasData && salonSnapshot.data!.exists) {
-                    final data = salonSnapshot.data!.data() as Map<String, dynamic>;
-                    ratingCount = data['ratingCount'] ?? 0;
-                    avgRating = (data['averageRating'] as num?)?.toDouble() ?? 0.0;
-                  }
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('appointments')
+                        .where('salonId', isEqualTo: liveUserData['salonId'])
+                        .where('isRated', isEqualTo: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                  return Column(
-                    children: [
-                      // Podsumowanie na górze (renderuje się natychmiast)
-                      Container(
-                        padding: const EdgeInsets.all(24.0),
-                        width: double.infinity,
-                        color: Colors.deepPurple[50],
-                        child: Column(
-                          children: [
-                            const Text("Średnia ocena salonu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.deepPurple)),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.star, color: Colors.amber, size: 40),
-                                const SizedBox(width: 8),
-                                Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.black87)),
+                      // Filtrowanie opinii lokalnie
+                      List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs.where((doc) {
+                        if (_selectedEmployeeFilter == 'all') return true;
+                        return (doc.data() as Map<String, dynamic>)['employeeId'] == _selectedEmployeeFilter;
+                      }).toList();
+
+                      // Obliczanie średniej dla wybranego filtra
+                      double avgRating = 0.0;
+                      if (reviewDocs.isNotEmpty) {
+                        avgRating = reviewDocs.map((d) => (d.data() as Map<String, dynamic>)['rating'] as num).reduce((a, b) => a + b) / reviewDocs.length;
+                      }
+
+                      return Column(
+                        children: [
+                          // Filtrowanie stylistek
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedEmployeeFilter,
+                              decoration: InputDecoration(labelText: "Wybierz stylistkę", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                              items: [
+                                const DropdownMenuItem(value: 'all', child: Text("Cały Salon")),
+                                ...employees.map((e) {
+                                  final d = e.data() as Map<String, dynamic>;
+                                  return DropdownMenuItem(value: e.id, child: Text("${d['firstName']} ${d['lastName']}"));
+                                })
                               ],
+                              onChanged: (val) => setState(() => _selectedEmployeeFilter = val!),
                             ),
-                            const SizedBox(height: 4),
-                            Text("Na podstawie $ratingCount opinii", style: TextStyle(color: Colors.grey[600])),
-                          ],
-                        ),
-                      ),
+                          ),
 
-                      // Lista wszystkich wystawionych opinii
-                      Expanded(
-                        child: StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('appointments')
-                              .where('salonId', isEqualTo: liveUserData['salonId'])
-                              .where('isRated', isEqualTo: true)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasError) {
-                              return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text('Błąd ładowania opinii:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent))));
-                            }
-                            // Kółko ładowania jest teraz tylko delikatnie na środku pustej listy
-                            if (!snapshot.hasData) {
-                              return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                            }
-
-                            List<QueryDocumentSnapshot> reviewDocs = List.from(snapshot.data!.docs);
-                            reviewDocs.sort((a, b) {
-                              final dataA = a.data() as Map<String, dynamic>;
-                              final dataB = b.data() as Map<String, dynamic>;
-                              final Timestamp? tA = dataA['ratedAt'] as Timestamp?;
-                              final Timestamp? tB = dataB['ratedAt'] as Timestamp?;
-
-                              if (tA == null && tB == null) return 0;
-                              if (tA == null) return 1;
-                              if (tB == null) return -1;
-                              return tB.compareTo(tA);
-                            });
-
-                            if (reviewDocs.isEmpty) {
-                              return Center(
-                                child: Column(
+                          // Podsumowanie (zmienia napis w zależności od filtra)
+                          Container(
+                            padding: const EdgeInsets.all(24.0),
+                            width: double.infinity,
+                            color: Colors.deepPurple[50],
+                            child: Column(
+                              children: [
+                                Text(_selectedEmployeeFilter == 'all' ? "Średnia ocena salonu" : "Średnia ocena stylistki", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.deepPurple)),
+                                const SizedBox(height: 8),
+                                Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey[300]),
-                                    const SizedBox(height: 16),
-                                    Text('Brak opinii od klientek.', style: TextStyle(color: Colors.grey[600])),
+                                    const Icon(Icons.star, color: Colors.amber, size: 40),
+                                    const SizedBox(width: 8),
+                                    Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.black87)),
                                   ],
                                 ),
-                              );
-                            }
+                                Text("Na podstawie ${reviewDocs.length} opinii", style: TextStyle(color: Colors.grey[600])),
+                              ],
+                            ),
+                          ),
 
-                            return ListView.builder(
+                          // Lista opinii
+                          Expanded(
+                            child: reviewDocs.isEmpty
+                                ? Center(child: Text("Brak opinii dla tego filtra.", style: TextStyle(color: Colors.grey[600])))
+                                : ListView.builder(
                               padding: const EdgeInsets.all(16),
                               itemCount: reviewDocs.length,
                               itemBuilder: (context, index) {
@@ -1074,8 +1068,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                 final String review = data['review'] ?? '';
                                 final String clientName = data['clientNameForReview'] ?? 'Anonim';
                                 final String serviceName = data['serviceName'] ?? 'Usługa';
+                                final String empName = data['employeeName'] ?? 'Stylistka';
                                 final Timestamp? ratedAt = data['ratedAt'] as Timestamp?;
-                                final String dateStr = ratedAt != null ? "${ratedAt.toDate().day.toString().padLeft(2, '0')}.${ratedAt.toDate().month.toString().padLeft(2, '0')}.${ratedAt.toDate().year}" : '';
+                                final dateStr = ratedAt != null ? "${ratedAt.toDate().day.toString().padLeft(2, '0')}.${ratedAt.toDate().month.toString().padLeft(2, '0')}.${ratedAt.toDate().year}" : '';
 
                                 return Card(
                                   margin: const EdgeInsets.only(bottom: 12),
@@ -1085,35 +1080,23 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                            Text(dateStr, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 16))),
-                                            const SizedBox(width: 8),
-                                            Text(serviceName, style: TextStyle(color: Colors.deepPurple[400], fontSize: 12, fontWeight: FontWeight.w500)),
-                                          ],
-                                        ),
-                                        if (review.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Text(review, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                                        ],
+                                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold)), Text(dateStr, style: TextStyle(color: Colors.grey[500]))]),
+                                        const SizedBox(height: 6),
+                                        Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
+                                        const SizedBox(height: 6),
+                                        Text("Stylistka: $empName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
+                                        Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                        if (review.isNotEmpty) ...[const SizedBox(height: 8), Text(review, style: const TextStyle(fontSize: 14))],
                                       ],
                                     ),
                                   ),
                                 );
                               },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),

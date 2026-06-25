@@ -52,130 +52,125 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
   // 🚀 ZMIANA: Zaktualizowana funkcja wyświetlająca opinie (naprawiony błąd indeksu Firebase)
   void _showReviewsBottomSheet(String salonId, String salonName) {
+    String selectedEmpFilter = 'all'; // Lokalny stan dla filtra w modalu
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-          ),
-          child: Column(
-            children: [
-              Container(height: 5, width: 40, margin: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text('Opinie o: $salonName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                    ),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
               ),
-              const Divider(),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  // 🚀 POPRAWKA: Usunięto .orderBy, żeby nie blokowało bazy brakiem indeksu!
-                  stream: FirebaseFirestore.instance
-                      .collection('appointments')
-                      .where('salonId', isEqualTo: salonId)
-                      .where('isRated', isEqualTo: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text('Błąd ładowania opinii:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent))));
-                    }
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
-                    }
+              child: Column(
+                children: [
+                  Container(height: 5, width: 40, margin: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text('Opinie o: $salonName', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                      ],
+                    ),
+                  ),
 
-                    // 🚀 LOKALNE SORTOWANIE (od najnowszych opinii)
-                    List<QueryDocumentSnapshot> reviewDocs = List.from(snapshot.data!.docs);
-                    reviewDocs.sort((a, b) {
-                      final dataA = a.data() as Map<String, dynamic>;
-                      final dataB = b.data() as Map<String, dynamic>;
-                      final Timestamp? tA = dataA['ratedAt'] as Timestamp?;
-                      final Timestamp? tB = dataB['ratedAt'] as Timestamp?;
-
-                      if (tA == null && tB == null) return 0;
-                      if (tA == null) return 1;
-                      if (tB == null) return -1;
-                      return tB.compareTo(tA);
-                    });
-
-                    if (reviewDocs.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey[300]),
-                            const SizedBox(height: 16),
-                            Text('Ten salon nie ma jeszcze żadnych opinii.', style: TextStyle(color: Colors.grey[600])),
+                  // Filtr stylistek wewnątrz modala
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: salonId).snapshots(),
+                      builder: (context, empSnap) {
+                        return DropdownButtonFormField<String>(
+                          value: selectedEmpFilter,
+                          decoration: InputDecoration(labelText: "Filtruj po stylistce", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                          items: [
+                            const DropdownMenuItem(value: 'all', child: Text("Wszyscy pracownicy")),
+                            if (empSnap.hasData) ...empSnap.data!.docs.map((e) {
+                              final d = e.data() as Map<String, dynamic>;
+                              return DropdownMenuItem(value: e.id, child: Text("${d['firstName']} ${d['lastName']}"));
+                            })
                           ],
-                        ),
-                      );
-                    }
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: reviewDocs.length,
-                      itemBuilder: (context, index) {
-                        final data = reviewDocs[index].data() as Map<String, dynamic>;
-                        final int rating = data['rating'] ?? 5;
-                        final String review = data['review'] ?? '';
-                        final String clientName = data['clientNameForReview'] ?? 'Anonim';
-                        final String serviceName = data['serviceName'] ?? 'Usługa';
-                        final String employeeName = data['employeeName'] ?? 'Stylistka'; // 🚀 Pobranie stylistki
-                        final Timestamp? ratedAt = data['ratedAt'] as Timestamp?;
-                        final String dateStr = ratedAt != null ? "${ratedAt.toDate().day.toString().padLeft(2, '0')}.${ratedAt.toDate().month.toString().padLeft(2, '0')}.${ratedAt.toDate().year}" : '';
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 0,
-                          color: Colors.grey[50],
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[200]!)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                    Text(dateStr, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                // 1. Gwiazdki
-                                Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
-                                const SizedBox(height: 6),
-                                // 2. Stylistka
-                                Text("Stylistka: $employeeName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
-                                // 3. Usługa
-                                Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                                // 4. Opis
-                                if (review.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(review, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                                ],
-                              ],
-                            ),
-                          ),
+                          onChanged: (val) => setModalState(() => selectedEmpFilter = val!),
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  const Divider(),
+
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('appointments')
+                          .where('salonId', isEqualTo: salonId)
+                          .where('isRated', isEqualTo: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+
+                        // Lokalne filtrowanie
+                        List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs.where((doc) {
+                          if (selectedEmpFilter == 'all') return true;
+                          return (doc.data() as Map<String, dynamic>)['employeeId'] == selectedEmpFilter;
+                        }).toList();
+
+                        // Lokalne sortowanie
+                        reviewDocs.sort((a, b) {
+                          final Timestamp? tA = (a.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
+                          final Timestamp? tB = (b.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
+                          return (tB ?? Timestamp(0, 0)).compareTo(tA ?? Timestamp(0, 0));
+                        });
+
+                        if (reviewDocs.isEmpty) {
+                          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey), const SizedBox(height: 16), const Text('Brak opinii dla wybranego filtra.')]));
+                        }
+
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: reviewDocs.length,
+                          itemBuilder: (context, index) {
+                            final data = reviewDocs[index].data() as Map<String, dynamic>;
+                            final int rating = data['rating'] ?? 5;
+                            final String review = data['review'] ?? '';
+                            final String clientName = data['clientNameForReview'] ?? 'Anonim';
+                            final String serviceName = data['serviceName'] ?? 'Usługa';
+                            final String empName = data['employeeName'] ?? 'Stylistka';
+                            final String dateStr = (data['ratedAt'] as Timestamp?)?.toDate().toString().substring(0, 10) ?? '';
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold)), Text(dateStr, style: TextStyle(color: Colors.grey[500]))]),
+                                    const SizedBox(height: 6),
+                                    Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
+                                    const SizedBox(height: 6),
+                                    Text("Stylistka: $empName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
+                                    Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                    if (review.isNotEmpty) ...[const SizedBox(height: 8), Text(review, style: const TextStyle(fontSize: 14))],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
