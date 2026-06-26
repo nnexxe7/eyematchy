@@ -52,7 +52,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
   // 🚀 ZMIANA: Zaktualizowana funkcja wyświetlająca opinie (naprawiony błąd indeksu Firebase)
   void _showReviewsBottomSheet(String salonId, String salonName) {
-    String selectedEmpFilter = 'all'; // Lokalny stan dla filtra w modalu
+    String selectedEmpFilter = 'all';
 
     showModalBottomSheet(
       context: context,
@@ -81,29 +81,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                     ),
                   ),
 
-                  // Filtr stylistek wewnątrz modala
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: salonId).snapshots(),
-                      builder: (context, empSnap) {
-                        return DropdownButtonFormField<String>(
-                          value: selectedEmpFilter,
-                          decoration: InputDecoration(labelText: "Filtruj po stylistce", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                          items: [
-                            const DropdownMenuItem(value: 'all', child: Text("Wszyscy pracownicy")),
-                            if (empSnap.hasData) ...empSnap.data!.docs.map((e) {
-                              final d = e.data() as Map<String, dynamic>;
-                              return DropdownMenuItem(value: e.id, child: Text("${d['firstName']} ${d['lastName']}"));
-                            })
-                          ],
-                          onChanged: (val) => setModalState(() => selectedEmpFilter = val!),
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(),
-
+                  // 1. Sekcja średniej oceny
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
@@ -120,49 +98,100 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           return (doc.data() as Map<String, dynamic>)['employeeId'] == selectedEmpFilter;
                         }).toList();
 
-                        // Lokalne sortowanie
+                        // Obliczanie średniej dla filtra
+                        double avgRating = 0.0;
+                        if (reviewDocs.isNotEmpty) {
+                          avgRating = reviewDocs.map((d) => (d.data() as Map<String, dynamic>)['rating'] as num).reduce((a, b) => a + b) / reviewDocs.length;
+                        }
+
+                        // Sortowanie
                         reviewDocs.sort((a, b) {
                           final Timestamp? tA = (a.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
                           final Timestamp? tB = (b.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
                           return (tB ?? Timestamp(0, 0)).compareTo(tA ?? Timestamp(0, 0));
                         });
 
-                        if (reviewDocs.isEmpty) {
-                          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey), const SizedBox(height: 16), const Text('Brak opinii dla wybranego filtra.')]));
-                        }
-
-                        return ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: reviewDocs.length,
-                          itemBuilder: (context, index) {
-                            final data = reviewDocs[index].data() as Map<String, dynamic>;
-                            final int rating = data['rating'] ?? 5;
-                            final String review = data['review'] ?? '';
-                            final String clientName = data['clientNameForReview'] ?? 'Anonim';
-                            final String serviceName = data['serviceName'] ?? 'Usługa';
-                            final String empName = data['employeeName'] ?? 'Stylistka';
-                            final String dateStr = (data['ratedAt'] as Timestamp?)?.toDate().toString().substring(0, 10) ?? '';
-
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold)), Text(dateStr, style: TextStyle(color: Colors.grey[500]))]),
-                                    const SizedBox(height: 6),
-                                    Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
-                                    const SizedBox(height: 6),
-                                    Text("Stylistka: $empName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
-                                    Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                                    if (review.isNotEmpty) ...[const SizedBox(height: 8), Text(review, style: const TextStyle(fontSize: 14))],
-                                  ],
-                                ),
+                        return Column(
+                          children: [
+                            // Sekcja podsumowania średniej
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(color: Colors.pink[50], borderRadius: BorderRadius.circular(20)),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.star, color: Colors.amber, size: 40),
+                                  const SizedBox(width: 12),
+                                  Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                  const SizedBox(width: 12),
+                                  Text("/ 5.0\n(${reviewDocs.length} opinii)", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                                ],
                               ),
-                            );
-                          },
+                            ),
+
+                            // Filtr
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: StreamBuilder<QuerySnapshot>(
+                                stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: salonId).snapshots(),
+                                builder: (context, empSnap) {
+                                  return DropdownButtonFormField<String>(
+                                    value: selectedEmpFilter,
+                                    decoration: InputDecoration(labelText: "Filtruj po stylistce", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text("Wszyscy pracownicy")),
+                                      if (empSnap.hasData) ...empSnap.data!.docs.map((e) {
+                                        final d = e.data() as Map<String, dynamic>;
+                                        return DropdownMenuItem(value: e.id, child: Text("${d['firstName']} ${d['lastName']}"));
+                                      })
+                                    ],
+                                    onChanged: (val) => setModalState(() => selectedEmpFilter = val!),
+                                  );
+                                },
+                              ),
+                            ),
+                            const Divider(height: 24),
+
+                            // Lista opinii
+                            Expanded(
+                              child: reviewDocs.isEmpty
+                                  ? const Center(child: Text("Brak opinii dla tego filtra."))
+                                  : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: reviewDocs.length,
+                                itemBuilder: (context, index) {
+                                  final data = reviewDocs[index].data() as Map<String, dynamic>;
+                                  final int rating = data['rating'] ?? 5;
+                                  final String review = data['review'] ?? '';
+                                  final String clientName = data['clientNameForReview'] ?? 'Anonim';
+                                  final String serviceName = data['serviceName'] ?? 'Usługa';
+                                  final String empName = data['employeeName'] ?? 'Stylistka';
+                                  final dateStr = (data['ratedAt'] as Timestamp?)?.toDate().toString().substring(0, 10) ?? '';
+
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold)), Text(dateStr, style: TextStyle(color: Colors.grey[500]))]),
+                                          const SizedBox(height: 6),
+                                          Row(children: List.generate(5, (i) => Icon(i < rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 18))),
+                                          const SizedBox(height: 6),
+                                          Text("Stylistka: $empName", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.deepPurple)),
+                                          Text("Usługa: $serviceName", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                                          if (review.isNotEmpty) ...[const SizedBox(height: 8), Text(review, style: const TextStyle(fontSize: 14))],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
