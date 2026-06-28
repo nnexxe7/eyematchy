@@ -637,7 +637,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                   SizedBox(
                                                     width: 60,
                                                     child: Column(
-                                                      children: List.generate(56, (index) {
+                                                      children: List.generate(68, (index) {
                                                         int currentMinutesFromDayStart = (7 * 60) + (index * 15);
                                                         int hour = currentMinutesFromDayStart ~/ 60;
                                                         int minute = currentMinutesFromDayStart % 60;
@@ -669,7 +669,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                             width: columnWidth,
                                                             child: Column(
                                                               crossAxisAlignment: CrossAxisAlignment.stretch,
-                                                              children: List.generate(56, (index) {
+                                                              children: List.generate(68, (index) {
                                                                 int currentMinutesFromDayStart = (7 * 60) + (index * 15);
                                                                 int minute = currentMinutesFromDayStart % 60;
                                                                 bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;

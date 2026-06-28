@@ -50,7 +50,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     }
   }
 
-  // 🚀 ZMIANA: Zaktualizowana funkcja wyświetlająca opinie (naprawiony błąd indeksu Firebase)
   void _showReviewsBottomSheet(String salonId, String salonName) {
     String selectedEmpFilter = 'all';
 
@@ -81,7 +80,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                     ),
                   ),
 
-                  // 1. Sekcja średniej oceny
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
@@ -92,19 +90,16 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
 
-                        // Lokalne filtrowanie
                         List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs.where((doc) {
                           if (selectedEmpFilter == 'all') return true;
                           return (doc.data() as Map<String, dynamic>)['employeeId'] == selectedEmpFilter;
                         }).toList();
 
-                        // Obliczanie średniej dla filtra
                         double avgRating = 0.0;
                         if (reviewDocs.isNotEmpty) {
                           avgRating = reviewDocs.map((d) => (d.data() as Map<String, dynamic>)['rating'] as num).reduce((a, b) => a + b) / reviewDocs.length;
                         }
 
-                        // Sortowanie
                         reviewDocs.sort((a, b) {
                           final Timestamp? tA = (a.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
                           final Timestamp? tB = (b.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
@@ -113,7 +108,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                         return Column(
                           children: [
-                            // Sekcja podsumowania średniej
                             Container(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               padding: const EdgeInsets.all(20),
@@ -130,7 +124,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                               ),
                             ),
 
-                            // Filtr
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16.0),
                               child: StreamBuilder<QuerySnapshot>(
@@ -153,7 +146,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                             ),
                             const Divider(height: 24),
 
-                            // Lista opinii
                             Expanded(
                               child: reviewDocs.isEmpty
                                   ? const Center(child: Text("Brak opinii dla tego filtra."))
@@ -345,12 +337,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Expanded(child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-
-                                          // 🚀 POPRAWKA: Ocena bez InkWell (nieklikalna, służy tylko jako informacja)
                                           if (ratingCount > 0)
                                             Row(
                                               children: [
-                                                const Icon(Icons.star, color: Colors.amber, size: 18), // Minimalnie powiększona gwiazdka dla lepszego wyglądu bez tła
+                                                const Icon(Icons.star, color: Colors.amber, size: 18),
                                                 const SizedBox(width: 4),
                                                 Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                                                 Text(' ($ratingCount)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
@@ -372,8 +362,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Expanded(child: Text('Zespół: ${emps.length} os.', style: const TextStyle(color: Colors.black54, fontSize: 13))),
-
-                                // 🚀 NOWE: Przycisk "Pokaż opinie" dodany obok przycisku "Zarezerwuj"
                                 if (ratingCount > 0) ...[
                                   TextButton(
                                     onPressed: () => _showReviewsBottomSheet(doc.id, name),
@@ -382,7 +370,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                 ],
-
                                 ElevatedButton(
                                   onPressed: () {
                                     setState(() {
@@ -410,11 +397,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     );
   }
 
-  // =========================================================================
-  // KROK 2: DYNAMICZNY KALENDARZ Z PRZYKLEJONYM NAGŁÓWKIEM
-  // =========================================================================
   Widget _buildStep2CalendarGrid() {
     if (_selectedSalonId == null) return const SizedBox();
+
+    // 🚀 NOWE: Pobranie aktualnego czasu dla logiki blokowania przeszłych terminów
+    final DateTime now = DateTime.now();
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('salons').doc(_selectedSalonId).snapshots(),
@@ -484,6 +471,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal, itemCount: 30,
                         itemBuilder: (context, index) {
+                          // Generujemy daty od dzisiaj (+0 dni), aby użytkownik nie mógł w ogóle wybrać dni wstecz
                           final date = DateTime.now().add(Duration(days: index));
                           final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
                           final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
@@ -566,7 +554,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                         SizedBox(
                                           width: 60,
                                           child: Column(
-                                            children: List.generate(56, (index) {
+                                            children: List.generate(68, (index) {
                                               int currentMinutesFromDayStart = (7 * 60) + (index * 15);
                                               int hour = currentMinutesFromDayStart ~/ 60;
                                               int minute = currentMinutesFromDayStart % 60;
@@ -607,13 +595,19 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                 return SizedBox(
                                                   width: columnWidth,
                                                   child: Column(
-                                                    children: List.generate(56, (index) {
+                                                    children: List.generate(68, (index) {
                                                       int currentMinutes = (7 * 60) + (index * 15);
                                                       int hour = currentMinutes ~/ 60;
                                                       int minute = currentMinutes % 60;
                                                       String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
                                                       bool isSlotClosed = isDayClosed || currentMinutes < openInMinutes || currentMinutes >= closeInMinutes;
                                                       bool isFullHour = minute == 0;
+
+                                                      // 🚀 NOWE: Logika blokowania czasu w przeszłości
+                                                      // Składamy datę z kalendarza i godzinę z siatki w jeden obiekt DateTime
+                                                      DateTime slotDateTime = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, hour, minute);
+                                                      // Jeśli ten złożony obiekt reprezentuje czas, który był wcześniej niż TERAZ, ustaw flagę
+                                                      bool isPastSlot = slotDateTime.isBefore(now);
 
                                                       bool isAlreadyBooked = false;
                                                       bool isStartOfBooking = false;
@@ -636,13 +630,17 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                         }
                                                       }
 
-                                                      bool shouldBlock = isSlotClosed || isAlreadyBooked;
+                                                      // Dodajemy "isPastSlot" do warunku blokującego kliknięcie
+                                                      bool shouldBlock = isSlotClosed || isAlreadyBooked || isPastSlot;
                                                       bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
+
+                                                      // Ustalamy kolor tła: zajęte -> czerwony, (zamknięte salon LUB przeszłość) -> szary, wolne -> biały
+                                                      Color? slotColor = isAlreadyBooked ? Colors.red[50] : ((isSlotClosed || isPastSlot) ? Colors.grey[200]! : Colors.white);
 
                                                       return Container(
                                                         height: 55,
                                                         decoration: BoxDecoration(
-                                                          color: isAlreadyBooked ? Colors.red[50] : (isSlotClosed ? Colors.grey[200]! : Colors.white),
+                                                          color: slotColor,
                                                           border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5), bottom: drawBottomBorder ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5) : BorderSide.none),
                                                         ),
                                                         child: InkWell(
@@ -656,7 +654,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                           },
                                                           child: isAlreadyBooked
                                                               ? Center(child: isStartOfBooking ? const Text('Zajęte', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)) : const SizedBox.shrink())
-                                                              : (isSlotClosed && isFullHour ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26)) : const SizedBox.expand()),
+                                                          // Wstawiamy ikonkę kłódki, gdy jest to pełna godzina i slot jest zablokowany (z powodu zamknięcia lub przeszłości)
+                                                              : ((isSlotClosed || isPastSlot) && isFullHour ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26)) : const SizedBox.expand()),
                                                         ),
                                                       );
                                                     }),
@@ -685,9 +684,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     );
   }
 
-  // =========================================================================
-  // KROK 3: WYBÓR USŁUGI I FINALIZACJA ZAPISU (FIRESTORE APPOINTMENTS)
-  // =========================================================================
   Widget _buildStep3ServicesList(String clientUid, String clientName) {
     if (_selectedEmployeeId == null || _selectedSalonId == null) return const SizedBox();
 
