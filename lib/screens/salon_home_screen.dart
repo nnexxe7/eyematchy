@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
 import 'eye_match_screen.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // 🚀 IMPORT POWIADOMIEŃ
 
 class SalonHomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -34,10 +35,43 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
   final ScrollController _headerScrollController = ScrollController();
   final ScrollController _gridScrollController = ScrollController();
 
+  // 🚀 NOWA FUNKCJA: Pobieranie i zapisywanie tokena powiadomień
+  Future<void> _setupPushNotifications() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+    try {
+      // 1. Pobranie unikalnego tokena urządzenia
+      String? token = await messaging.getToken();
+
+      if (token != null) {
+        // 2. Zapisanie tokena w profilu użytkownika w bazie Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': token,
+        }, SetOptions(merge: true));
+        print("Zapisano token FCM dla stylistki: $token");
+      }
+
+      // 3. Nasłuchiwanie na zmianę tokena przez system
+      messaging.onTokenRefresh.listen((newToken) async {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': newToken,
+        }, SetOptions(merge: true));
+      });
+    } catch (e) {
+      print("Błąd podczas pobierania tokena FCM: $e");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    // 🚀 ZMIANA: TabController na 4 elementy (dodajemy zakładkę Opinie)
+
+    // 🚀 WYWOŁANIE FUNKCJI TOKENA
+    _setupPushNotifications();
+
     _tabController = TabController(length: 4, vsync: this);
 
     _tabController.addListener(() {
@@ -220,7 +254,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
         'ownerId': user!.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'employees': [user.uid],
-        // Dodajemy startowe pola oceny
         'averageRating': 0.0,
         'ratingCount': 0,
       });
@@ -518,7 +551,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 Tab(icon: Icon(Icons.calendar_month), text: "Kalendarz"),
                 Tab(icon: Icon(Icons.people), text: "Zespół"),
                 Tab(icon: Icon(Icons.sell_outlined), text: "Cennik"),
-                Tab(icon: Icon(Icons.star_outline), text: "Opinie"), // 🚀 NOWA ZAKŁADKA
+                Tab(icon: Icon(Icons.star_outline), text: "Opinie"),
               ],
             ),
           ),
@@ -529,7 +562,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           body: TabBarView(
             controller: _tabController,
             children: [
-              // --- ZAKŁADKA 1: KALENDARZ PRZEWIJANY W POZIOMIE ---
               StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance.collection('salons').doc(liveUserData['salonId']).snapshots(),
                 builder: (context, salonSnapshot) {
@@ -760,7 +792,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 },
               ),
 
-              // TAB 2: ZESPÓŁ
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -827,7 +858,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 ),
               ),
 
-              // TAB 3: OFERTA I CENNIK
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -981,7 +1011,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 ),
               ),
 
-              // 🚀 TAB 4: OPINIE O SALONIE (WIDOK DLA STYLISTKI/WŁAŚCICIELA)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('users')
@@ -990,7 +1019,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 builder: (context, empSnapshot) {
                   if (!empSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                  // Lista pracowników do filtra
                   final employees = empSnapshot.data!.docs;
 
                   return StreamBuilder<QuerySnapshot>(
@@ -1002,13 +1030,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                      // Filtrowanie opinii lokalnie
                       List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs.where((doc) {
                         if (_selectedEmployeeFilter == 'all') return true;
                         return (doc.data() as Map<String, dynamic>)['employeeId'] == _selectedEmployeeFilter;
                       }).toList();
 
-                      // Obliczanie średniej dla wybranego filtra
                       double avgRating = 0.0;
                       if (reviewDocs.isNotEmpty) {
                         avgRating = reviewDocs.map((d) => (d.data() as Map<String, dynamic>)['rating'] as num).reduce((a, b) => a + b) / reviewDocs.length;
@@ -1016,7 +1042,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                       return Column(
                         children: [
-                          // Filtrowanie stylistek
                           Padding(
                             padding: const EdgeInsets.all(16.0),
                             child: DropdownButtonFormField<String>(
@@ -1033,7 +1058,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             ),
                           ),
 
-                          // Podsumowanie (zmienia napis w zależności od filtra)
                           Container(
                             padding: const EdgeInsets.all(24.0),
                             width: double.infinity,
@@ -1055,7 +1079,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             ),
                           ),
 
-                          // Lista opinii
                           Expanded(
                             child: reviewDocs.isEmpty
                                 ? Center(child: Text("Brak opinii dla tego filtra.", style: TextStyle(color: Colors.grey[600])))

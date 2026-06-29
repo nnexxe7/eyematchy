@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // 🚀 IMPORT POWIADOMIEŃ
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 🚀 IMPORT LOKALNYCH POWIADOMIEŃ
+
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'package:eyematchy/screens/setup_profile_screen.dart';
@@ -15,12 +18,68 @@ import 'screens/eye_match_screen.dart';
 import 'screens/client_appointments_screen.dart';
 import 'screens/verify_email_screen.dart';
 
+// 🚀 ZMIENNA GLOBALNA DLA POWIADOMIEŃ LOKALNYCH
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+// 🚀 FUNKCJA OBSŁUGUJĄCA POWIADOMIENIA W TLE (musi być poza klasami)
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print("Odebrano powiadomienie w tle: ${message.messageId}");
+}
+
+// 🚀 INICJALIZACJA POWIADOMIEŃ LOKALNYCH
+Future<void> initLocalNotifications() async {
+  const AndroidInitializationSettings initializationSettingsAndroid =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings =
+  InitializationSettings(android: initializationSettingsAndroid);
+
+  // 🚀 ZMIANA: Dodano słówko "settings:"
+  await flutterLocalNotificationsPlugin.initialize(
+    settings: initializationSettings,
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Usunięto sztuczne modyfikacje pasków.
-  // System sam zarządza nawigacją (najlepsze pod kątem UX i braku irytujących animacji).
+  await initLocalNotifications();
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  FirebaseMessaging messaging = FirebaseMessaging.instance;
+  await messaging.requestPermission(
+    alert: true,
+    announcement: false,
+    badge: true,
+    carPlay: false,
+    criticalAlert: false,
+    provisional: false,
+    sound: true,
+  );
+
+  // 🚀 ZMIANA: Wszystkie parametry mają teraz swoje nazwy
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    if (message.notification != null) {
+      flutterLocalNotificationsPlugin.show(
+        id: message.hashCode,
+        title: message.notification!.title,
+        body: message.notification!.body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_channel',
+            'High Importance Notifications',
+            importance: Importance.max,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+        ),
+      );
+    }
+  });
+
   runApp(const MyApp());
 }
 
@@ -48,12 +107,11 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      // Pasek systemowy na dole ma teraz tło idealnie zlewające się z aplikacją
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFFFAFAFA), // Kolor tła aplikacji
+        systemNavigationBarColor: Color(0xFFFAFAFA),
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: StreamBuilder<User?>(
@@ -110,7 +168,7 @@ class AppDrawer extends StatelessWidget {
   Future<void> _toggleView(BuildContext context, String targetView) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      Navigator.pop(context); // Zamyka menu boczne przed przełączeniem widoku
+      Navigator.pop(context);
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'currentView': targetView,
       });
@@ -124,15 +182,12 @@ class AppDrawer extends StatelessWidget {
     final bool isOwner = currentRole == 'salon' && userData['salonRole'] == 'owner';
 
     return Drawer(
-      // 🚀 ZMIANA: top: false pozwala na to, aby górny nagłówek profilu (fioletowy)
-      // doszedł do samej krawędzi ekranu (nad paskiem statusu),
-      // podczas gdy dół wciąż jest bezpiecznie odsunięty.
       child: SafeArea(
         top: false,
         child: Column(
           children: [
             UserAccountsDrawerHeader(
-              margin: EdgeInsets.zero, // 🚀 ZMIANA: Likwiduje niechciany dolny odstęp nagłówka
+              margin: EdgeInsets.zero,
               decoration: const BoxDecoration(color: Colors.deepPurple),
               currentAccountPicture: const CircleAvatar(
                 backgroundColor: Colors.white,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class ClientHomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -25,9 +26,43 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   final ScrollController _headerScrollController = ScrollController();
   final ScrollController _gridScrollController = ScrollController();
 
+  // 🚀 NOWA FUNKCJA: Pobieranie i zapisywanie tokena powiadomień
+  Future<void> _setupPushNotifications() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+    try {
+      // 1. Pobranie unikalnego tokena urządzenia
+      String? token = await messaging.getToken();
+
+      if (token != null) {
+        // 2. Zapisanie tokena w profilu użytkownika w bazie Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': token,
+        }, SetOptions(merge: true)); // merge: true nie nadpisuje reszty danych!
+        print("Zapisano token FCM dla klientki: $token");
+      }
+
+      // 3. Nasłuchiwanie na ewentualną zmianę tokena przez system
+      messaging.onTokenRefresh.listen((newToken) async {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': newToken,
+        }, SetOptions(merge: true));
+      });
+    } catch (e) {
+      print("Błąd podczas pobierania tokena FCM: $e");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // 🚀 WYWOŁANIE FUNKCJI TOKENA PRZY UCHURUCHOMIENIU EKRANU
+    _setupPushNotifications();
+
     _gridScrollController.addListener(() {
       if (_headerScrollController.hasClients && _gridScrollController.hasClients) {
         if (_headerScrollController.offset != _gridScrollController.offset) {
@@ -400,7 +435,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   Widget _buildStep2CalendarGrid() {
     if (_selectedSalonId == null) return const SizedBox();
 
-    // 🚀 NOWE: Pobranie aktualnego czasu dla logiki blokowania przeszłych terminów
     final DateTime now = DateTime.now();
 
     return StreamBuilder<DocumentSnapshot>(
@@ -434,9 +468,15 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               .where('date', isEqualTo: formattedDateStr)
               .snapshots(),
           builder: (context, appointmentsSnapshot) {
-            if (!appointmentsSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
 
-            final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.data!.docs;
+            // 🚀 MĄDRE FILTROWANIE: Pobieramy dane z cache, ale odrzucamy "duchy" z poprzedniego dnia
+            final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.hasData
+                ? appointmentsSnapshot.data!.docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              // Pokazujemy tylko te wizyty, których data pasuje do klikniętego dnia
+              return data['date'] == formattedDateStr;
+            }).toList()
+                : [];
 
             return StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: _selectedSalonId).snapshots(),
@@ -471,7 +511,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal, itemCount: 30,
                         itemBuilder: (context, index) {
-                          // Generujemy daty od dzisiaj (+0 dni), aby użytkownik nie mógł w ogóle wybrać dni wstecz
                           final date = DateTime.now().add(Duration(days: index));
                           final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
                           final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
@@ -603,10 +642,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                       bool isSlotClosed = isDayClosed || currentMinutes < openInMinutes || currentMinutes >= closeInMinutes;
                                                       bool isFullHour = minute == 0;
 
-                                                      // 🚀 NOWE: Logika blokowania czasu w przeszłości
-                                                      // Składamy datę z kalendarza i godzinę z siatki w jeden obiekt DateTime
                                                       DateTime slotDateTime = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, hour, minute);
-                                                      // Jeśli ten złożony obiekt reprezentuje czas, który był wcześniej niż TERAZ, ustaw flagę
                                                       bool isPastSlot = slotDateTime.isBefore(now);
 
                                                       bool isAlreadyBooked = false;
@@ -630,11 +666,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                         }
                                                       }
 
-                                                      // Dodajemy "isPastSlot" do warunku blokującego kliknięcie
                                                       bool shouldBlock = isSlotClosed || isAlreadyBooked || isPastSlot;
                                                       bool drawBottomBorder = !isAlreadyBooked || isEndOfBooking;
 
-                                                      // Ustalamy kolor tła: zajęte -> czerwony, (zamknięte salon LUB przeszłość) -> szary, wolne -> biały
                                                       Color? slotColor = isAlreadyBooked ? Colors.red[50] : ((isSlotClosed || isPastSlot) ? Colors.grey[200]! : Colors.white);
 
                                                       return Container(
@@ -654,7 +688,6 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                           },
                                                           child: isAlreadyBooked
                                                               ? Center(child: isStartOfBooking ? const Text('Zajęte', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)) : const SizedBox.shrink())
-                                                          // Wstawiamy ikonkę kłódki, gdy jest to pełna godzina i slot jest zablokowany (z powodu zamknięcia lub przeszłości)
                                                               : ((isSlotClosed || isPastSlot) && isFullHour ? const Center(child: Icon(Icons.lock_outline, size: 14, color: Colors.black26)) : const SizedBox.expand()),
                                                         ),
                                                       );
