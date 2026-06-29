@@ -192,7 +192,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                 const SizedBox(height: 24),
                 if (clientId != null && clientId.isNotEmpty)
                   SizedBox(
-                    width: double.infinity, height: 50,
+                    width: double.infinity, height: 48,
                     child: OutlinedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);

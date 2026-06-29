@@ -18,6 +18,14 @@ async function sendPushNotification(employeeId, title, body) {
 
         const message = {
             notification: { title, body },
+            // 🚀 WAŻNE: Dodane ustawienia, żeby działały wyskakujące banery na Androidzie
+            android: {
+                notification: {
+                    channelId: "high_importance_channel",
+                    priority: "max",
+                    sound: "default"
+                }
+            },
             token: fcmToken
         };
 
@@ -38,17 +46,29 @@ exports.sendAppointmentNotification = onDocumentCreated("appointments/{appointme
     );
 });
 
-// 2. Obsługa ZMIANY wizyty (np. daty lub godziny)
+// 2. Obsługa AKTUALIZACJI wizyty (Zmiana daty/godziny LUB wystawienie oceny)
 exports.updateAppointmentNotification = onDocumentUpdated("appointments/{appointmentId}", async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
 
-    // Wyślij tylko jeśli zmieniła się data lub godzina
+    // Sytuacja A: Zmieniła się data lub godzina
     if (before.date !== after.date || before.time !== after.time) {
         await sendPushNotification(
             after.employeeId,
             'Zmiana terminu wizyty 📅',
             `Wizyta ${after.clientName} została zmieniona na ${after.date} godz. ${after.time}.`
+        );
+    }
+
+    // 🚀 Sytuacja B: Klientka właśnie wystawiła ocenę (isRated zmieniło się z false na true)
+    if (before.isRated === false && after.isRated === true) {
+        const rating = after.rating || 5;
+        const clientName = after.clientNameForReview || after.clientName || "Klientka";
+
+        await sendPushNotification(
+            after.employeeId,
+            'Masz nową opinię! ⭐',
+            `${clientName} ocenił(a) Twoją usługę na ${rating}/5.`
         );
     }
 });
