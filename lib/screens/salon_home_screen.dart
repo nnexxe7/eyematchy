@@ -35,7 +35,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
   final ScrollController _headerScrollController = ScrollController();
   final ScrollController _gridScrollController = ScrollController();
 
-  // 🚀 NOWA FUNKCJA: Pobieranie i zapisywanie tokena powiadomień
+  String? _draggingAppId;
+
+  // 🚀 FUNKCJA: Pobieranie i zapisywanie tokena powiadomień
   Future<void> _setupPushNotifications() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -43,18 +45,15 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     FirebaseMessaging messaging = FirebaseMessaging.instance;
 
     try {
-      // 1. Pobranie unikalnego tokena urządzenia
       String? token = await messaging.getToken();
 
       if (token != null) {
-        // 2. Zapisanie tokena w profilu użytkownika w bazie Firestore
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'fcmToken': token,
         }, SetOptions(merge: true));
         print("Zapisano token FCM dla stylistki: $token");
       }
 
-      // 3. Nasłuchiwanie na zmianę tokena przez system
       messaging.onTokenRefresh.listen((newToken) async {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'fcmToken': newToken,
@@ -68,8 +67,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-
-    // 🚀 WYWOŁANIE FUNKCJI TOKENA
     _setupPushNotifications();
 
     _tabController = TabController(length: 4, vsync: this);
@@ -133,77 +130,80 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
     showModalBottomSheet(
         context: context,
+        isScrollControlled: true, // 🚀 POPRAWKA: Pozwala BottomSheet urosnąć
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
         builder: (context) {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24, top: 24, left: 24, right: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Szczegóły wizyty', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-                const Divider(height: 24),
-                FutureBuilder<DocumentSnapshot>(
-                    future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
-                    builder: (context, clientSnap) {
-                      String finalName = fallbackName;
-                      String phoneNumber = '';
-                      if (clientSnap.hasData && clientSnap.data!.exists) {
-                        final cData = clientSnap.data!.data() as Map<String, dynamic>;
-                        final String fName = cData['firstName'] ?? fallbackName;
-                        final String lName = cData['lastName'] ?? '';
-                        finalName = lName.isNotEmpty ? "$fName $lName" : fName;
-                        phoneNumber = cData['phoneNumber'] ?? cData['phone'] ?? 'Brak numeru w profilu';
-                      }
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(backgroundColor: Colors.deepPurple.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.deepPurple)),
-                        title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-                            if (phoneNumber.isNotEmpty)
-                              Padding(padding: const EdgeInsets.only(top: 4.0), child: Row(children: [const Icon(Icons.phone, size: 14, color: Colors.deepPurple), const SizedBox(width: 6), Text(phoneNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.deepPurple))])),
-                          ],
-                        ),
-                      );
-                    }
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(backgroundColor: Colors.pinkAccent.withOpacity(0.1), child: const Icon(Icons.spa, color: Colors.pinkAccent)),
-                  title: const Text('Usługa', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  subtitle: Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.access_time, color: Colors.blue)),
-                  title: const Text('Termin', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  subtitle: Text('$displayDate\n$time - $formattedEndTime ($duration min)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
-                ),
-                const SizedBox(height: 24),
-                if (clientId != null && clientId.isNotEmpty)
-                  SizedBox(
-                    width: double.infinity, height: 48,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => ClientHistoryScreen(clientId: clientId, salonId: widget.userData['salonId'], clientName: fallbackName)));
-                      },
-                      icon: const Icon(Icons.history, color: Colors.deepPurple),
-                      label: const Text('Historyczne wizyty klientki', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple, side: const BorderSide(color: Colors.deepPurple), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    ),
+            child: SingleChildScrollView( // 🚀 POPRAWKA: Likwiduje "bottom overflowed by 2 pixels"
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Szczegóły wizyty', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                    ],
                   ),
-              ],
+                  const Divider(height: 24),
+                  FutureBuilder<DocumentSnapshot>(
+                      future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
+                      builder: (context, clientSnap) {
+                        String finalName = fallbackName;
+                        String phoneNumber = '';
+                        if (clientSnap.hasData && clientSnap.data!.exists) {
+                          final cData = clientSnap.data!.data() as Map<String, dynamic>;
+                          final String fName = cData['firstName'] ?? fallbackName;
+                          final String lName = cData['lastName'] ?? '';
+                          finalName = lName.isNotEmpty ? "$fName $lName" : fName;
+                          phoneNumber = cData['phoneNumber'] ?? cData['phone'] ?? 'Brak numeru w profilu';
+                        }
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(backgroundColor: Colors.deepPurple.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.deepPurple)),
+                          title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                              if (phoneNumber.isNotEmpty)
+                                Padding(padding: const EdgeInsets.only(top: 4.0), child: Row(children: [const Icon(Icons.phone, size: 14, color: Colors.deepPurple), const SizedBox(width: 6), Text(phoneNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.deepPurple))])),
+                            ],
+                          ),
+                        );
+                      }
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(backgroundColor: Colors.pinkAccent.withOpacity(0.1), child: const Icon(Icons.spa, color: Colors.pinkAccent)),
+                    title: const Text('Usługa', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    subtitle: Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.access_time, color: Colors.blue)),
+                    title: const Text('Termin', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    subtitle: Text('$displayDate\n$time - $formattedEndTime ($duration min)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  ),
+                  const SizedBox(height: 24),
+                  if (clientId != null && clientId.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity, height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => ClientHistoryScreen(clientId: clientId, salonId: widget.userData['salonId'], clientName: fallbackName)));
+                        },
+                        icon: const Icon(Icons.history, color: Colors.deepPurple),
+                        label: const Text('Historyczne wizyty klientki', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple, side: const BorderSide(color: Colors.deepPurple), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
         }
@@ -697,17 +697,23 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                         crossAxisAlignment: CrossAxisAlignment.start,
                                                         children: employees.map((emp) {
                                                           final String empId = emp.id;
+                                                          final eData = emp.data() as Map<String, dynamic>;
+                                                          final String empFirstName = eData['firstName'] ?? 'Stylistka';
+
                                                           return SizedBox(
                                                             width: columnWidth,
                                                             child: Column(
                                                               crossAxisAlignment: CrossAxisAlignment.stretch,
                                                               children: List.generate(68, (index) {
                                                                 int currentMinutesFromDayStart = (7 * 60) + (index * 15);
+                                                                int hour = currentMinutesFromDayStart ~/ 60;
                                                                 int minute = currentMinutesFromDayStart % 60;
+                                                                String formattedTime = "$hour:${minute.toString().padLeft(2, '0')}";
                                                                 bool isSlotClosed = isDayClosed || currentMinutesFromDayStart < openInMinutes || currentMinutesFromDayStart >= closeInMinutes;
                                                                 bool isFullHour = minute == 0;
 
                                                                 Map<String, dynamic>? appointmentData;
+                                                                String? bookedAppId;
                                                                 bool isStartOfBooking = false;
                                                                 bool isEndOfBooking = false;
 
@@ -721,6 +727,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                                   if (currentMinutesFromDayStart >= appStart && currentMinutesFromDayStart < appEnd) {
                                                                     appointmentData = d;
+                                                                    bookedAppId = appDoc.id;
                                                                     isStartOfBooking = (currentMinutesFromDayStart == appStart);
                                                                     isEndOfBooking = (currentMinutesFromDayStart + 15 == appEnd);
                                                                     break;
@@ -730,42 +737,177 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                 bool hasBooking = appointmentData != null;
                                                                 bool drawBottomLine = !hasBooking || isEndOfBooking;
 
-                                                                return Container(
-                                                                  height: 55,
-                                                                  decoration: BoxDecoration(color: isSlotClosed ? Colors.grey[200]! : Colors.white, border: Border(left: BorderSide(color: Colors.grey[200]!, width: 0.5), bottom: drawBottomLine ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5) : BorderSide.none)),
-                                                                  child: hasBooking
-                                                                      ? GestureDetector(
-                                                                    onTap: () => _showAppointmentDetails(appointmentData!),
-                                                                    child: Container(
-                                                                      width: double.infinity, margin: EdgeInsets.only(left: 3, right: 3, top: isStartOfBooking ? 3 : 0, bottom: isEndOfBooking ? 3 : 0), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                                      decoration: BoxDecoration(color: Colors.deepPurple, borderRadius: BorderRadius.vertical(top: isStartOfBooking ? const Radius.circular(8) : Radius.zero, bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero)),
-                                                                      child: isStartOfBooking
-                                                                          ? Column(
-                                                                        mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
-                                                                        children: [
-                                                                          Builder(
-                                                                            builder: (context) {
-                                                                              List<String> timeParts = (appointmentData!['time'] ?? '00:00').split(':');
-                                                                              int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
-                                                                              int duration = appointmentData['duration'] ?? 30;
-                                                                              int endMin = startMin + duration;
-                                                                              String endHour = (endMin ~/ 60).toString();
-                                                                              String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                                              return Text("${appointmentData['time']} - $endHour:$endMinute", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400));
-                                                                            },
+                                                                // 🚀 DRAG & DROP WDROŻONE PONIŻEJ
+                                                                return DragTarget<Map<String, dynamic>>(
+                                                                  onWillAcceptWithDetails: (details) {
+                                                                    // Jeśli samo okienko jest zamknięte lub już zajęte, od razu blokujemy
+                                                                    if (isSlotClosed || hasBooking) return false;
+
+                                                                    final draggedData = details.data;
+                                                                    final int draggedDuration = draggedData['duration'] ?? 30;
+                                                                    final String draggedAppId = draggedData['appId'];
+
+                                                                    // 1. Obliczamy nowy czas rozpoczęcia i zakończenia (w minutach)
+                                                                    int newStart = currentMinutesFromDayStart;
+                                                                    int newEnd = newStart + draggedDuration;
+
+                                                                    // 2. Blokujemy, jeśli wizyta skończy się po godzinach otwarcia salonu
+                                                                    if (newEnd > closeInMinutes) return false;
+
+                                                                    // 3. Sprawdzamy kolizję ze wszystkimi innymi wizytami u tej stylistki
+                                                                    for (var appDoc in activeAppointments) {
+                                                                      // Ignorujemy wizytę, którą właśnie trzymamy w palcu (bo sprawdzalibyśmy kolizję z samą sobą)
+                                                                      if (appDoc.id == draggedAppId) continue;
+
+                                                                      final d = appDoc.data() as Map<String, dynamic>;
+                                                                      if (d['employeeId'] != empId) continue; // Sprawdzamy tylko kolumnę tej konkretnej stylistki
+
+                                                                      List<String> timeParts = (d['time'] ?? '00:00').split(':');
+                                                                      int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                      int appDuration = d['duration'] ?? 30;
+                                                                      int appEnd = appStart + appDuration;
+
+                                                                      // Klasyczny wzór matematyczny na przecinanie się dwóch odcinków czasu
+                                                                      if (newStart < appEnd && newEnd > appStart) {
+                                                                        return false; // Wykryto kolizję! (Pole nie podświetli się na zielono)
+                                                                      }
+                                                                    }
+
+                                                                    return true; // Droga wolna!
+                                                                  },
+                                                                  onAcceptWithDetails: (details) async {
+                                                                    final draggedData = details.data;
+                                                                    final String draggedAppId = draggedData['appId'];
+
+                                                                    try {
+                                                                      await FirebaseFirestore.instance
+                                                                          .collection('appointments')
+                                                                          .doc(draggedAppId)
+                                                                          .update({
+                                                                        'time': formattedTime,
+                                                                        'employeeId': empId,
+                                                                        'employeeName': empFirstName,
+                                                                      });
+                                                                      if (context.mounted) {
+                                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Przesunięto wizytę!'), backgroundColor: Colors.green));
+                                                                      }
+                                                                    } catch (e) {
+                                                                      if (context.mounted) {
+                                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Błąd podczas przesuwania!'), backgroundColor: Colors.redAccent));
+                                                                      }
+                                                                    }
+                                                                  },
+                                                                  builder: (context, candidateData, rejectedData) {
+                                                                    bool isHovered = candidateData.isNotEmpty;
+                                                                    Color baseColor = isSlotClosed ? Colors.grey[200]! : Colors.white;
+                                                                    Color containerColor = isHovered ? Colors.green[100]! : baseColor;
+
+                                                                    return Container(
+                                                                      height: 55,
+                                                                      decoration: BoxDecoration(
+                                                                          color: containerColor,
+                                                                          border: Border(
+                                                                              left: BorderSide(color: Colors.grey[200]!, width: 0.5),
+                                                                              bottom: drawBottomLine ? BorderSide(color: isFullHour ? Colors.grey[300]! : Colors.grey[200]!, width: isFullHour ? 0.8 : 0.5) : BorderSide.none
+                                                                          )
+                                                                      ),
+                                                                      child: hasBooking
+                                                                          ? Builder(builder: (context) {
+                                                                        // 🚀 POPRAWKA: Przekazujemy dane do nowej, bezpiecznej zmiennej, aby Dart nie zgłaszał błędów
+                                                                        final appData = appointmentData!;
+
+                                                                        // 1. Sprawdzamy czy ta konkretna wizyta jest właśnie przeciągana
+                                                                        bool isBeingDragged = bookedAppId == _draggingAppId;
+
+                                                                        // 2. Liczymy pełną wysokość kafelka do animacji (feedback)
+                                                                        int duration = appData['duration'] ?? 30;
+                                                                        double fullHeight = (duration / 15) * 55.0;
+
+                                                                        // 3. Wygląd standardowego kafelka w kalendarzu
+                                                                        Widget bookingTile = GestureDetector(
+                                                                          onTap: () => _showAppointmentDetails(appData),
+                                                                          child: Container(
+                                                                            width: double.infinity,
+                                                                            margin: EdgeInsets.only(left: 3, right: 3, top: isStartOfBooking ? 3 : 0, bottom: isEndOfBooking ? 3 : 0),
+                                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                                            decoration: BoxDecoration(
+                                                                                color: Colors.deepPurple,
+                                                                                borderRadius: BorderRadius.vertical(
+                                                                                    top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
+                                                                                    bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero
+                                                                                )
+                                                                            ),
+                                                                            child: isStartOfBooking
+                                                                                ? Column(
+                                                                              mainAxisAlignment: MainAxisAlignment.center,
+                                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                                              children: [
+                                                                                Builder(
+                                                                                  builder: (context) {
+                                                                                    List<String> timeParts = (appData['time'] ?? '00:00').split(':');
+                                                                                    int startMin = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
+                                                                                    int endMin = startMin + duration;
+                                                                                    String endHour = (endMin ~/ 60).toString();
+                                                                                    String endMinute = (endMin % 60).toString().padLeft(2, '0');
+                                                                                    return Text("${appData['time']} - $endHour:$endMinute", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400));
+                                                                                  },
+                                                                                ),
+                                                                                const SizedBox(height: 1),
+                                                                                Expanded(child: Container(alignment: Alignment.centerLeft, child: Text(appData['clientName'] ?? 'Klient', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)))),
+                                                                                Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                                                                              ],
+                                                                            )
+                                                                                : const SizedBox.shrink(),
                                                                           ),
-                                                                          const SizedBox(height: 1),
-                                                                          Expanded(child: Container(alignment: Alignment.centerLeft, child: Text(appointmentData['clientName'] ?? 'Klient', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)))),
-                                                                          Text(appointmentData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
-                                                                        ],
-                                                                      )
-                                                                          : const SizedBox.shrink(),
-                                                                    ),
-                                                                  )
-                                                                      : InkWell(
-                                                                    onTap: isSlotClosed ? null : () {},
-                                                                    child: isSlotClosed ? Center(child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox()) : const SizedBox.expand(),
-                                                                  ),
+                                                                        );
+
+                                                                        // 4. Jeśli ten element jest przeciągany, przyciemnij go (ghost effect)
+                                                                        if (isBeingDragged) {
+                                                                          bookingTile = Opacity(opacity: 0.3, child: bookingTile);
+                                                                        }
+
+                                                                        // 🚀 5. USUNIĘTO WARUNEK! Teraz każdy blok wizyty można złapać w dowolnym miejscu
+                                                                        return LongPressDraggable<Map<String, dynamic>>(
+                                                                          data: {...appData, 'appId': bookedAppId},
+                                                                          delay: const Duration(milliseconds: 300),
+                                                                          // Zapobiega nienaturalnemu skakaniu długich wizyt po kliknięciu w środek
+                                                                          dragAnchorStrategy: pointerDragAnchorStrategy,
+                                                                          onDragStarted: () => setState(() => _draggingAppId = bookedAppId),
+                                                                          onDragEnd: (_) => setState(() => _draggingAppId = null),
+                                                                          feedback: Material(
+                                                                            color: Colors.transparent,
+                                                                            child: Container(
+                                                                              width: columnWidth,
+                                                                              height: fullHeight, // Pełna wyliczona wysokość
+                                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                                                              decoration: BoxDecoration(
+                                                                                  color: Colors.deepPurple.withOpacity(0.95),
+                                                                                  borderRadius: BorderRadius.circular(8),
+                                                                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 2)]
+                                                                              ),
+                                                                              child: Column(
+                                                                                mainAxisAlignment: MainAxisAlignment.start,
+                                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                                children: [
+                                                                                  Text("${appData['time']}", style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                                                                  const SizedBox(height: 4),
+                                                                                  Text(appData['clientName'] ?? 'Klient', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                                                  const SizedBox(height: 2),
+                                                                                  Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                                                                                ],
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                          childWhenDragging: bookingTile,
+                                                                          child: bookingTile,
+                                                                        );
+                                                                      })
+                                                                          : InkWell(
+                                                                        onTap: isSlotClosed ? null : () {},
+                                                                        child: isSlotClosed ? Center(child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox()) : const SizedBox.expand(),
+                                                                      ),
+                                                                    );
+                                                                  },
                                                                 );
                                                               }),
                                                             ),
