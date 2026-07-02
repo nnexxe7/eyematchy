@@ -37,6 +37,15 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
   String? _draggingAppId;
 
+  // 🚀 Dodana metoda resetująca stan przeciągania
+  void _resetDraggingState() {
+    if (_draggingAppId != null) {
+      setState(() {
+        _draggingAppId = null;
+      });
+    }
+  }
+
   // 🚀 FUNKCJA: Pobieranie i zapisywanie tokena powiadomień
   Future<void> _setupPushNotifications() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -130,12 +139,12 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
     showModalBottomSheet(
         context: context,
-        isScrollControlled: true, // 🚀 POPRAWKA: Pozwala BottomSheet urosnąć
+        isScrollControlled: true,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
         builder: (context) {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 24, top: 24, left: 24, right: 24),
-            child: SingleChildScrollView( // 🚀 POPRAWKA: Likwiduje "bottom overflowed by 2 pixels"
+            child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,7 +431,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           final isSelected = date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year;
           final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
           return GestureDetector(
-            onTap: () => setState(() => _selectedDate = date),
+            onTap: () {
+              // 🚀 Resetujemy stan przeciągania przy zmianie daty, by uniknąć zawieszonego "szarego kafelka"
+              _resetDraggingState();
+              setState(() => _selectedDate = date);
+            },
             child: Container(
               width: 65, margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
               decoration: BoxDecoration(color: isSelected ? Colors.deepPurple : const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(16)),
@@ -737,43 +750,36 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                 bool hasBooking = appointmentData != null;
                                                                 bool drawBottomLine = !hasBooking || isEndOfBooking;
 
-                                                                // 🚀 DRAG & DROP WDROŻONE PONIŻEJ
                                                                 return DragTarget<Map<String, dynamic>>(
                                                                   onWillAcceptWithDetails: (details) {
-                                                                    // Jeśli samo okienko jest zamknięte lub już zajęte, od razu blokujemy
                                                                     if (isSlotClosed || hasBooking) return false;
 
                                                                     final draggedData = details.data;
                                                                     final int draggedDuration = draggedData['duration'] ?? 30;
                                                                     final String draggedAppId = draggedData['appId'];
 
-                                                                    // 1. Obliczamy nowy czas rozpoczęcia i zakończenia (w minutach)
                                                                     int newStart = currentMinutesFromDayStart;
                                                                     int newEnd = newStart + draggedDuration;
 
-                                                                    // 2. Blokujemy, jeśli wizyta skończy się po godzinach otwarcia salonu
                                                                     if (newEnd > closeInMinutes) return false;
 
-                                                                    // 3. Sprawdzamy kolizję ze wszystkimi innymi wizytami u tej stylistki
                                                                     for (var appDoc in activeAppointments) {
-                                                                      // Ignorujemy wizytę, którą właśnie trzymamy w palcu (bo sprawdzalibyśmy kolizję z samą sobą)
                                                                       if (appDoc.id == draggedAppId) continue;
 
                                                                       final d = appDoc.data() as Map<String, dynamic>;
-                                                                      if (d['employeeId'] != empId) continue; // Sprawdzamy tylko kolumnę tej konkretnej stylistki
+                                                                      if (d['employeeId'] != empId) continue;
 
                                                                       List<String> timeParts = (d['time'] ?? '00:00').split(':');
                                                                       int appStart = (int.tryParse(timeParts[0]) ?? 0) * 60 + (int.tryParse(timeParts[1]) ?? 0);
                                                                       int appDuration = d['duration'] ?? 30;
                                                                       int appEnd = appStart + appDuration;
 
-                                                                      // Klasyczny wzór matematyczny na przecinanie się dwóch odcinków czasu
                                                                       if (newStart < appEnd && newEnd > appStart) {
-                                                                        return false; // Wykryto kolizję! (Pole nie podświetli się na zielono)
+                                                                        return false;
                                                                       }
                                                                     }
 
-                                                                    return true; // Droga wolna!
+                                                                    return true;
                                                                   },
                                                                   onAcceptWithDetails: (details) async {
                                                                     final draggedData = details.data;
@@ -785,6 +791,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                           .doc(draggedAppId)
                                                                           .update({
                                                                         'time': formattedTime,
+                                                                        'date': formattedDateStr, // 🚀 Aktualizujemy także datę, jeśli wrzucono w nowy dzień!
                                                                         'employeeId': empId,
                                                                         'employeeName': empFirstName,
                                                                       });
@@ -795,6 +802,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       if (context.mounted) {
                                                                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Błąd podczas przesuwania!'), backgroundColor: Colors.redAccent));
                                                                       }
+                                                                    } finally {
+                                                                      // 🚀 Resetujemy stan bez względu na wynik
+                                                                      _resetDraggingState();
                                                                     }
                                                                   },
                                                                   builder: (context, candidateData, rejectedData) {
@@ -813,17 +823,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       ),
                                                                       child: hasBooking
                                                                           ? Builder(builder: (context) {
-                                                                        // 🚀 POPRAWKA: Przekazujemy dane do nowej, bezpiecznej zmiennej, aby Dart nie zgłaszał błędów
                                                                         final appData = appointmentData!;
 
-                                                                        // 1. Sprawdzamy czy ta konkretna wizyta jest właśnie przeciągana
                                                                         bool isBeingDragged = bookedAppId == _draggingAppId;
 
-                                                                        // 2. Liczymy pełną wysokość kafelka do animacji (feedback)
                                                                         int duration = appData['duration'] ?? 30;
                                                                         double fullHeight = (duration / 15) * 55.0;
 
-                                                                        // 3. Wygląd standardowego kafelka w kalendarzu
                                                                         Widget bookingTile = GestureDetector(
                                                                           onTap: () => _showAppointmentDetails(appData),
                                                                           child: Container(
@@ -861,24 +867,21 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                           ),
                                                                         );
 
-                                                                        // 4. Jeśli ten element jest przeciągany, przyciemnij go (ghost effect)
                                                                         if (isBeingDragged) {
                                                                           bookingTile = Opacity(opacity: 0.3, child: bookingTile);
                                                                         }
 
-                                                                        // 🚀 5. USUNIĘTO WARUNEK! Teraz każdy blok wizyty można złapać w dowolnym miejscu
                                                                         return LongPressDraggable<Map<String, dynamic>>(
                                                                           data: {...appData, 'appId': bookedAppId},
                                                                           delay: const Duration(milliseconds: 300),
-                                                                          // Zapobiega nienaturalnemu skakaniu długich wizyt po kliknięciu w środek
                                                                           dragAnchorStrategy: pointerDragAnchorStrategy,
                                                                           onDragStarted: () => setState(() => _draggingAppId = bookedAppId),
-                                                                          onDragEnd: (_) => setState(() => _draggingAppId = null),
+                                                                          onDraggableCanceled: (_, __) => _resetDraggingState(), // 🚀 Dodano reset, gdy upuścimy poza kalendarzem
                                                                           feedback: Material(
                                                                             color: Colors.transparent,
                                                                             child: Container(
                                                                               width: columnWidth,
-                                                                              height: fullHeight, // Pełna wyliczona wysokość
+                                                                              height: fullHeight,
                                                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                                                                               decoration: BoxDecoration(
                                                                                   color: Colors.deepPurple.withOpacity(0.95),
