@@ -76,9 +76,12 @@ exports.updateAppointmentNotification = onDocumentUpdated("appointments/{appoint
 // 3. Obsługa KASOWANIA wizyty
 exports.deleteAppointmentNotification = onDocumentDeleted("appointments/{appointmentId}", async (event) => {
     const data = event.data.data();
-    await sendPushNotification(
-        data.employeeId,
-        'Wizyta anulowana ❌',
-        `Klientka ${data.clientName} odwołała wizytę na ${data.serviceName}.`
-    );
+
+    if (data.clientId) {
+        await sendPushNotification(
+            data.clientId,
+            'Wizyta odwołana ❌',
+            `Twój salon odwołał wizytę na ${data.serviceName} (${data.date} o godz. ${data.time}). Skontaktuj się z salonem, aby ustalić nowy termin.`
+        );
+    }
 });

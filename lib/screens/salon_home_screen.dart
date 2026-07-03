@@ -113,7 +113,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     super.dispose();
   }
 
-  void _showAppointmentDetails(Map<String, dynamic> appointmentData) {
+  void _showAppointmentDetails(String appointmentId, Map<String, dynamic> appointmentData) {
     final String fallbackName = appointmentData['clientName'] ?? 'Klient';
     final String serviceName = appointmentData['serviceName'] ?? 'Usługa';
     final String time = appointmentData['time'] ?? '00:00';
@@ -211,6 +211,61 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple, side: const BorderSide(color: Colors.deepPurple), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       ),
                     ),
+                  const SizedBox(height: 12), // Odstęp
+                  // 🚀 NOWY PRZYCISK: Odwołanie wizyty
+                  SizedBox(
+                    width: double.infinity, height: 48,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        // Wyświetlamy Dialog z potwierdzeniem (Tak / Nie)
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext dialogContext) {
+                            return AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              title: const Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                  SizedBox(width: 8),
+                                  Text('Odwołaj wizytę'),
+                                ],
+                              ),
+                              content: const Text('Czy na pewno chcesz odwołać tę wizytę? Tej operacji nie można cofnąć, a klientka otrzyma powiadomienie.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext), // Zamyka sam dialog (Nie)
+                                  child: const Text('Nie, powrót', style: TextStyle(color: Colors.grey)),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                  onPressed: () async {
+                                    Navigator.pop(dialogContext); // Zamyka dialog
+                                    Navigator.pop(context); // Zamyka dolny panel (BottomSheet)
+
+                                    try {
+                                      // Usuwanie wizyty z bazy danych
+                                      await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).delete();
+
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wizyta została odwołana.'), backgroundColor: Colors.black87));
+                                      }
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
+                                      }
+                                    }
+                                  },
+                                  child: const Text('Tak, odwołaj'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                      label: const Text('Odwołaj wizytę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -831,7 +886,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         double fullHeight = (duration / 15) * 55.0;
 
                                                                         Widget bookingTile = GestureDetector(
-                                                                          onTap: () => _showAppointmentDetails(appData),
+                                                                          onTap: () => _showAppointmentDetails(bookedAppId!, appData),
                                                                           child: Container(
                                                                             width: double.infinity,
                                                                             margin: EdgeInsets.only(left: 3, right: 3, top: isStartOfBooking ? 3 : 0, bottom: isEndOfBooking ? 3 : 0),
