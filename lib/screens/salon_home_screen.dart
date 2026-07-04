@@ -768,6 +768,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                           final eData = emp.data() as Map<String, dynamic>;
                                                           final String empFirstName = eData['firstName'] ?? 'Stylistka';
 
+                                                          // 🚀 NOWE: Uprawnienia! Czy to właściciel salonu, czy to jest kolumna tej konkretnej stylistki?
+                                                          final bool canManageThisColumn = isOwner || (user.uid == empId);
+
                                                           return SizedBox(
                                                             width: columnWidth,
                                                             child: Column(
@@ -807,7 +810,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                                 return DragTarget<Map<String, dynamic>>(
                                                                   onWillAcceptWithDetails: (details) {
-                                                                    if (isSlotClosed || hasBooking) return false;
+                                                                    // 1. Nie możemy upuszczać wizyt na cudzą kolumnę (chyba że jesteśmy szefową)
+                                                                    if (!canManageThisColumn) return false;
+
+                                                                    // 🚀 2. POPRAWKA: Blokujemy od razu tylko jeśli salon jest zamknięty (USUNIĘTO hasBooking!)
+                                                                    if (isSlotClosed) return false;
 
                                                                     final draggedData = details.data;
                                                                     final int draggedDuration = draggedData['duration'] ?? 30;
@@ -816,9 +823,12 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                     int newStart = currentMinutesFromDayStart;
                                                                     int newEnd = newStart + draggedDuration;
 
+                                                                    // 3. Blokada wyjścia poza godziny otwarcia
                                                                     if (newEnd > closeInMinutes) return false;
 
+                                                                    // 4. Zaawansowane sprawdzanie kolizji
                                                                     for (var appDoc in activeAppointments) {
+                                                                      // Ignorujemy wizytę, którą właśnie przesuwamy (dzięki temu możemy najechać na jej własne stare miejsce!)
                                                                       if (appDoc.id == draggedAppId) continue;
 
                                                                       final d = appDoc.data() as Map<String, dynamic>;
@@ -829,12 +839,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       int appDuration = d['duration'] ?? 30;
                                                                       int appEnd = appStart + appDuration;
 
+                                                                      // Sprawdzamy, czy w tym samym czasie nie ma INNEJ wizyty
                                                                       if (newStart < appEnd && newEnd > appStart) {
-                                                                        return false;
+                                                                        return false; // Wykryto kolizję z obcą wizytą!
                                                                       }
                                                                     }
 
-                                                                    return true;
+                                                                    return true; // Droga wolna!
                                                                   },
                                                                   onAcceptWithDetails: (details) async {
                                                                     final draggedData = details.data;
@@ -846,7 +857,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                           .doc(draggedAppId)
                                                                           .update({
                                                                         'time': formattedTime,
-                                                                        'date': formattedDateStr, // 🚀 Aktualizujemy także datę, jeśli wrzucono w nowy dzień!
+                                                                        'date': formattedDateStr,
                                                                         'employeeId': empId,
                                                                         'employeeName': empFirstName,
                                                                       });
@@ -858,7 +869,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Błąd podczas przesuwania!'), backgroundColor: Colors.redAccent));
                                                                       }
                                                                     } finally {
-                                                                      // 🚀 Resetujemy stan bez względu na wynik
                                                                       _resetDraggingState();
                                                                     }
                                                                   },
@@ -879,9 +889,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       child: hasBooking
                                                                           ? Builder(builder: (context) {
                                                                         final appData = appointmentData!;
-
                                                                         bool isBeingDragged = bookedAppId == _draggingAppId;
-
                                                                         int duration = appData['duration'] ?? 30;
                                                                         double fullHeight = (duration / 15) * 55.0;
 
@@ -926,12 +934,18 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                           bookingTile = Opacity(opacity: 0.3, child: bookingTile);
                                                                         }
 
+                                                                        // 🚀 BLOKADA NR 2: Jeśli to nie jest Twoja kolumna (i nie jesteś szefem),
+                                                                        // to zwracamy zwykły kafelek bez opcji przeciągania (LongPressDraggable).
+                                                                        if (!canManageThisColumn) {
+                                                                          return bookingTile;
+                                                                        }
+
                                                                         return LongPressDraggable<Map<String, dynamic>>(
                                                                           data: {...appData, 'appId': bookedAppId},
                                                                           delay: const Duration(milliseconds: 300),
                                                                           dragAnchorStrategy: pointerDragAnchorStrategy,
                                                                           onDragStarted: () => setState(() => _draggingAppId = bookedAppId),
-                                                                          onDraggableCanceled: (_, __) => _resetDraggingState(), // 🚀 Dodano reset, gdy upuścimy poza kalendarzem
+                                                                          onDraggableCanceled: (_, __) => _resetDraggingState(),
                                                                           feedback: Material(
                                                                             color: Colors.transparent,
                                                                             child: Container(
