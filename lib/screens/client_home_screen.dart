@@ -85,7 +85,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     }
   }
 
-  void _showReviewsBottomSheet(String salonId, String salonName) {
+  // 🚀 OPTYMALIZACJA: Dodano parametry z wyliczoną już oceną z dokumentu salonu
+  void _showReviewsBottomSheet(String salonId, String salonName, double overallAvgRating, int overallRatingCount) {
     String selectedEmpFilter = 'all';
 
     showModalBottomSheet(
@@ -117,29 +118,38 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
+                      // 🚀 OPTYMALIZACJA TWARDEGO LIMITU I SORTOWANIA Z POZIOMU BAZY
+                      stream: selectedEmpFilter == 'all'
+                          ? FirebaseFirestore.instance
                           .collection('appointments')
                           .where('salonId', isEqualTo: salonId)
                           .where('isRated', isEqualTo: true)
+                          .orderBy('ratedAt', descending: true) // Ostatnie wizyty
+                          .limit(15) // Blokada przed zżeraniem readsów!
+                          .snapshots()
+                          : FirebaseFirestore.instance
+                          .collection('appointments')
+                          .where('salonId', isEqualTo: salonId)
+                          .where('employeeId', isEqualTo: selectedEmpFilter)
+                          .where('isRated', isEqualTo: true)
+                          .orderBy('ratedAt', descending: true)
+                          .limit(15)
                           .snapshots(),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
 
-                        List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs.where((doc) {
-                          if (selectedEmpFilter == 'all') return true;
-                          return (doc.data() as Map<String, dynamic>)['employeeId'] == selectedEmpFilter;
-                        }).toList();
-
-                        double avgRating = 0.0;
-                        if (reviewDocs.isNotEmpty) {
-                          avgRating = reviewDocs.map((d) => (d.data() as Map<String, dynamic>)['rating'] as num).reduce((a, b) => a + b) / reviewDocs.length;
+                        // Zabezpieczenie przed błędem z brakiem Indeksu
+                        if (snapshot.hasError) {
+                          print("🚨 BŁĄD FIREBASE OPINIE: ${snapshot.error}");
+                          return const Center(child: Padding(
+                            padding: EdgeInsets.all(24.0),
+                            child: Text('Wymagany indeks w Firebase.\nSprawdź konsolę i kliknij wygenerowany link.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                          ));
                         }
 
-                        reviewDocs.sort((a, b) {
-                          final Timestamp? tA = (a.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
-                          final Timestamp? tB = (b.data() as Map<String, dynamic>)['ratedAt'] as Timestamp?;
-                          return (tB ?? Timestamp(0, 0)).compareTo(tA ?? Timestamp(0, 0));
-                        });
+                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
+
+                        // Otrzymujemy od razu gotową, posortowaną listę (max 15 elementów)
+                        List<QueryDocumentSnapshot> reviewDocs = snapshot.data!.docs;
 
                         return Column(
                           children: [
@@ -152,9 +162,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                 children: [
                                   const Icon(Icons.star, color: Colors.amber, size: 40),
                                   const SizedBox(width: 12),
-                                  Text(avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                  // 🚀 Używamy od razu ogólnej oceny salonu (żadnego liczenia w pętli)
+                                  Text(overallAvgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.black87)),
                                   const SizedBox(width: 12),
-                                  Text("/ 5.0\n(${reviewDocs.length} opinii)", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                                  Text("/ 5.0\n($overallRatingCount opinii)", style: TextStyle(color: Colors.grey[700], fontSize: 13)),
                                 ],
                               ),
                             ),
@@ -166,7 +177,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                 builder: (context, empSnap) {
                                   return DropdownButtonFormField<String>(
                                     value: selectedEmpFilter,
-                                    decoration: InputDecoration(labelText: "Filtruj po stylistce", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    decoration: InputDecoration(labelText: "Filtruj po stylistce (Max 15 ostatnich)", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                                     items: [
                                       const DropdownMenuItem(value: 'all', child: Text("Wszyscy pracownicy")),
                                       if (empSnap.hasData) ...empSnap.data!.docs.map((e) {
@@ -399,7 +410,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                 Expanded(child: Text('Zespół: ${emps.length} os.', style: const TextStyle(color: Colors.black54, fontSize: 13))),
                                 if (ratingCount > 0) ...[
                                   TextButton(
-                                    onPressed: () => _showReviewsBottomSheet(doc.id, name),
+                                    // 🚀 OPTYMALIZACJA: Przekazujemy statystyki od razu do funkcji!
+                                    onPressed: () => _showReviewsBottomSheet(doc.id, name, avgRating, ratingCount),
                                     style: TextButton.styleFrom(foregroundColor: Colors.pinkAccent, padding: const EdgeInsets.symmetric(horizontal: 8)),
                                     child: const Text('Pokaż opinie', style: TextStyle(fontWeight: FontWeight.bold)),
                                   ),
@@ -469,11 +481,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               .snapshots(),
           builder: (context, appointmentsSnapshot) {
 
-            // 🚀 MĄDRE FILTROWANIE: Pobieramy dane z cache, ale odrzucamy "duchy" z poprzedniego dnia
+            // MĄDRE FILTROWANIE: Pobieramy dane z cache, ale odrzucamy "duchy" z poprzedniego dnia
             final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.hasData
                 ? appointmentsSnapshot.data!.docs.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
-              // Pokazujemy tylko te wizyty, których data pasuje do klikniętego dnia
               return data['date'] == formattedDateStr;
             }).toList()
                 : [];

@@ -46,29 +46,43 @@ exports.sendAppointmentNotification = onDocumentCreated("appointments/{appointme
     );
 });
 
-// 2. Obsługa AKTUALIZACJI wizyty (Zmiana daty/godziny LUB wystawienie oceny)
+// 2. Obsługa AKTUALIZACJI wizyty (Zmiana daty/godziny, przypisania LUB wystawienie oceny)
 exports.updateAppointmentNotification = onDocumentUpdated("appointments/{appointmentId}", async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
 
-    // Sytuacja A: Zmieniła się data lub godzina
-    if (before.date !== after.date || before.time !== after.time) {
+    // 🚀 Sytuacja A1: Wizyta została przeniesiona do INNEJ stylistki
+    if (before.employeeId !== after.employeeId) {
+        // Powiadomienie dla NOWEJ stylistki (która otrzymała wizytę)
         await sendPushNotification(
             after.employeeId,
-            'Zmiana terminu wizyty 📅',
-            `Wizyta ${after.clientName} została zmieniona na ${after.date} godz. ${after.time}.`
+            'Nowa wizyta! 🔄',
+            'Wizyta innej stylistki została przypisana do Ciebie.'
+        );
+
+        // Powiadomienie dla STAREJ stylistki (żeby wiedziała, dlaczego zniknęło)
+        await sendPushNotification(
+            before.employeeId,
+            'Wizyta przeniesiona ℹ️',
+            'Twoja wizyta została przekazana innej stylistce.'
+        );
+    }
+    // Sytuacja A2: Zmieniła się data lub godzina (ale stylistka zostaje ta sama)
+    else if (before.date !== after.date || before.time !== after.time) {
+        await sendPushNotification(
+            after.employeeId,
+            'Zmiana terminu 📅',
+            `Wizyta przesunięta na ${after.date}, godz. ${after.time}.`
         );
     }
 
-    // 🚀 Sytuacja B: Klientka właśnie wystawiła ocenę (isRated zmieniło się z false na true)
+    // Sytuacja B: Klientka właśnie wystawiła ocenę (isRated zmieniło się z false na true)
     if (before.isRated === false && after.isRated === true) {
         const rating = after.rating || 5;
-        const clientName = after.clientNameForReview || after.clientName || "Klientka";
-
         await sendPushNotification(
             after.employeeId,
-            'Masz nową opinię! ⭐',
-            `${clientName} ocenił(a) Twoją usługę na ${rating}/5.`
+            'Nowa opinia! ⭐',
+            `Otrzymałaś ocenę ${rating}/5 za ostatnią usługę.`
         );
     }
 });
@@ -81,7 +95,7 @@ exports.deleteAppointmentNotification = onDocumentDeleted("appointments/{appoint
         await sendPushNotification(
             data.clientId,
             'Wizyta odwołana ❌',
-            `Twój salon odwołał wizytę na ${data.serviceName} (${data.date} o godz. ${data.time}). Skontaktuj się z salonem, aby ustalić nowy termin.`
+            `Twój salon odwołał wizytę z dnia ${data.date} (${data.time}).`
         );
     }
 });

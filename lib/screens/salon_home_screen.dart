@@ -122,6 +122,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     final double price = (appointmentData['price'] as num?)?.toDouble() ?? 0.0;
     final String? clientId = appointmentData['clientId'];
 
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final bool isOwner = widget.userData['salonRole'] == 'owner';
+    final String? appointmentEmployeeId = appointmentData['employeeId'];
+    final bool canCancelThisAppointment = isOwner || (currentUserId == appointmentEmployeeId);
+
     String displayDate = date;
     try {
       final parts = date.split('-');
@@ -211,61 +216,60 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         style: OutlinedButton.styleFrom(foregroundColor: Colors.deepPurple, side: const BorderSide(color: Colors.deepPurple), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       ),
                     ),
-                  const SizedBox(height: 12), // Odstęp
-                  // 🚀 NOWY PRZYCISK: Odwołanie wizyty
-                  SizedBox(
-                    width: double.infinity, height: 48,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        // Wyświetlamy Dialog z potwierdzeniem (Tak / Nie)
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext dialogContext) {
-                            return AlertDialog(
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              title: const Row(
-                                children: [
-                                  Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-                                  SizedBox(width: 8),
-                                  Text('Odwołaj wizytę'),
+                  if (canCancelThisAppointment) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity, height: 48,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext dialogContext) {
+                              return AlertDialog(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                title: const Row(
+                                  children: [
+                                    Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                    SizedBox(width: 8),
+                                    Text('Odwołaj wizytę'),
+                                  ],
+                                ),
+                                content: const Text('Czy na pewno chcesz odwołać tę wizytę? Tej operacji nie można cofnąć, a klientka otrzyma powiadomienie.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Nie, powrót', style: TextStyle(color: Colors.grey)),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                    onPressed: () async {
+                                      Navigator.pop(dialogContext);
+                                      Navigator.pop(context);
+
+                                      try {
+                                        await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).delete();
+
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wizyta została odwołana.'), backgroundColor: Colors.black87));
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
+                                        }
+                                      }
+                                    },
+                                    child: const Text('Tak, odwołaj'),
+                                  ),
                                 ],
-                              ),
-                              content: const Text('Czy na pewno chcesz odwołać tę wizytę? Tej operacji nie można cofnąć, a klientka otrzyma powiadomienie.'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(dialogContext), // Zamyka sam dialog (Nie)
-                                  child: const Text('Nie, powrót', style: TextStyle(color: Colors.grey)),
-                                ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                                  onPressed: () async {
-                                    Navigator.pop(dialogContext); // Zamyka dialog
-                                    Navigator.pop(context); // Zamyka dolny panel (BottomSheet)
-
-                                    try {
-                                      // Usuwanie wizyty z bazy danych
-                                      await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).delete();
-
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wizyta została odwołana.'), backgroundColor: Colors.black87));
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
-                                      }
-                                    }
-                                  },
-                                  child: const Text('Tak, odwołaj'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                      icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
-                      label: const Text('Odwołaj wizytę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                              );
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                        label: const Text('Odwołaj wizytę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                      ),
                     ),
-                  ),
+                  ], // <-- Koniec warunku if
                 ],
               ),
             ),
@@ -1371,19 +1375,50 @@ class ClientHistoryScreen extends StatelessWidget {
               final lName = data['lastName'] ?? '';
               fullName = lName.isNotEmpty ? "$fName $lName" : fName;
             }
-            return Text('Historia: $fullName');
+            return Text('Historia (10): $fullName');
           },
         ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('appointments').where('salonId', isEqualTo: salonId).where('clientId', isEqualTo: clientId).snapshots(),
+        // 🚀 TWARDY LIMIT W BAZIE DANYCH: Pobieramy tylko 10 najnowszych wizyt
+        stream: FirebaseFirestore.instance
+            .collection('appointments')
+            .where('salonId', isEqualTo: salonId)
+            .where('clientId', isEqualTo: clientId)
+            .orderBy('date', descending: true) // Wymaga indeksu w Firebase!
+            .limit(10) // <-- BLOKADA (Zabezpiecza przed kosztami)
+            .snapshots(),
         builder: (context, snapshot) {
+          // Obsługa błędu braku indeksu
+          if (snapshot.hasError) {
+            print("🚨 BŁĄD FIREBASE: ${snapshot.error}");
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 50),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Błąd bazy danych (prawdopodobnie brak indeksu).\nSprawdź konsolę w środowisku programistycznym i kliknij w wygenerowany link, aby utworzyć indeks Firebase.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Brak historii wizyt dla tej klientki.', style: TextStyle(color: Colors.grey, fontSize: 16)));
 
           final docs = snapshot.data!.docs.toList();
+
+          // Lokalne sortowanie czasowe dla wizyt z tego samego dnia
           docs.sort((a, b) {
             final dataA = a.data() as Map<String, dynamic>;
             final dataB = b.data() as Map<String, dynamic>;
@@ -1401,8 +1436,7 @@ class ClientHistoryScreen extends StatelessWidget {
               final time = data['time'] ?? '';
               final serviceName = data['serviceName'] ?? 'Usługa';
               final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-              final employeeName = data['employeeName'] ?? '';
-              final employeeId = data['employeeId'];
+              final employeeName = data['employeeName'] ?? 'Stylistka';
 
               String displayDate = date;
               try {
@@ -1418,21 +1452,7 @@ class ClientHistoryScreen extends StatelessWidget {
                   title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 4.0),
-                    child: employeeId != null
-                        ? FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance.collection('users').doc(employeeId).get(),
-                      builder: (context, empSnap) {
-                        String finalEmpName = employeeName;
-                        if (empSnap.hasData && empSnap.data!.exists) {
-                          final empData = empSnap.data!.data() as Map<String, dynamic>;
-                          final String fName = empData['firstName'] ?? employeeName;
-                          final String lName = empData['lastName'] ?? '';
-                          finalEmpName = lName.isNotEmpty ? "$fName $lName" : fName;
-                        }
-                        return Text('$displayDate godz. $time\nWykonuje: $finalEmpName');
-                      },
-                    )
-                        : Text('$displayDate godz. $time\nWykonuje: $employeeName'),
+                    child: Text('$displayDate godz. $time\nWykonuje: $employeeName'),
                   ),
                   trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple, fontSize: 15)),
                   isThreeLine: true,
