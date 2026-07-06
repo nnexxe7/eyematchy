@@ -50,6 +50,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    // 🚀 NOWE: Walidacja długości hasła
+    if (password.length < 8) {
+      _showTopSnackBar('Hasło musi składać się z co najmniej 8 znaków!');
+      return;
+    }
+
     if (password != confirmPassword) {
       _showTopSnackBar('Hasła nie są identyczne!');
       return;
@@ -72,7 +78,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } on FirebaseAuthException catch (e) {
       String message = 'Wystąpił błąd podczas rejestracji.';
       if (e.code == 'weak-password') {
-        message = 'Hasło jest za słabe (musi mieć min. 6 znaków).';
+        // 🚀 Zaktualizowany komunikat z Firebase
+        message = 'Hasło jest za słabe (musi mieć min. 8 znaków).';
       } else if (e.code == 'email-already-in-use') {
         message = 'Ten e-mail jest już zarejestrowany.';
       } else if (e.code == 'invalid-email') {
