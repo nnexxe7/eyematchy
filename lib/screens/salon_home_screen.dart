@@ -113,6 +113,136 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     super.dispose();
   }
 
+  // 🚀 NOWA FUNKCJA: Okno dialogowe do dodawania bloku czasowego
+  void _showBlockTimeDialog(String empId, String empFirstName, String startTime, int startMinutesFromDay, int closeInMinutes) {
+    TimeOfDay? selectedEndTime;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            String endTimeText = selectedEndTime == null ? 'Wybierz godzinę końcową' : '${selectedEndTime!.hour.toString().padLeft(2, '0')}:${selectedEndTime!.minute.toString().padLeft(2, '0')}';
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(Icons.block, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Text('Zablokuj czas: $empFirstName', style: const TextStyle(fontSize: 18)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Zablokuj od: $startTime', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  const Text('Opcja 1: Zablokuj do konkretnej godziny', style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.access_time),
+                    label: Text(endTimeText),
+                    onPressed: () async {
+                      List<String> startParts = startTime.split(':');
+                      TimeOfDay initialTime = TimeOfDay(hour: int.parse(startParts[0]), minute: int.parse(startParts[1]));
+
+                      final TimeOfDay? time = await showTimePicker(
+                        context: context,
+                        initialTime: initialTime,
+                        builder: (context, child) {
+                          return MediaQuery(
+                            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                            child: child!,
+                          );
+                        },
+                      );
+
+                      if (time != null) {
+                        setDialogState(() {
+                          selectedEndTime = time;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('Opcja 2: Szybka akcja', style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[200], foregroundColor: Colors.black87),
+                      icon: const Icon(Icons.nightlight_round),
+                      label: const Text('Zablokuj do końca dnia'),
+                      onPressed: () {
+                        // Obliczamy godzinę zamknięcia i ustawiamy jako endTime
+                        int closeHour = closeInMinutes ~/ 60;
+                        int closeMinute = closeInMinutes % 60;
+                        setDialogState(() {
+                          selectedEndTime = TimeOfDay(hour: closeHour, minute: closeMinute);
+                        });
+                      },
+                    ),
+                  )
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Anuluj', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+                  onPressed: selectedEndTime == null ? null : () async {
+                    int endMinutesFromDay = (selectedEndTime!.hour * 60) + selectedEndTime!.minute;
+
+                    if (endMinutesFromDay <= startMinutesFromDay) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Godzina końcowa musi być późniejsza niż początkowa!'), backgroundColor: Colors.redAccent));
+                      return;
+                    }
+
+                    if (endMinutesFromDay > closeInMinutes) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Blokada nie może wykraczać poza godziny otwarcia!'), backgroundColor: Colors.redAccent));
+                      return;
+                    }
+
+                    int duration = endMinutesFromDay - startMinutesFromDay;
+
+                    Navigator.pop(dialogContext); // Zamknij dialog
+
+                    final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
+
+                    try {
+                      await FirebaseFirestore.instance.collection('appointments').add({
+                        'salonId': widget.userData['salonId'],
+                        'employeeId': empId,
+                        'employeeName': empFirstName,
+                        'date': formattedDateStr,
+                        'time': startTime,
+                        'duration': duration,
+                        'isBlock': true, // 🚀 FLAGA BLOKADY
+                        'serviceName': 'Niedostępność / Przerwa',
+                        'clientName': 'Zablokowany czas',
+                        'price': 0.0,
+                        'createdAt': FieldValue.serverTimestamp(),
+                      });
+
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Czas został zablokowany.'), backgroundColor: Colors.green));
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
+                    }
+                  },
+                  child: const Text('Zatwierdź blokadę'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showAppointmentDetails(String appointmentId, Map<String, dynamic> appointmentData) {
     final String fallbackName = appointmentData['clientName'] ?? 'Klient';
     final String serviceName = appointmentData['serviceName'] ?? 'Usługa';
@@ -121,6 +251,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     final int duration = appointmentData['duration'] ?? 30;
     final double price = (appointmentData['price'] as num?)?.toDouble() ?? 0.0;
     final String? clientId = appointmentData['clientId'];
+    final bool isBlock = appointmentData['isBlock'] ?? false; // 🚀 Sprawdzamy czy to blokada
 
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     final bool isOwner = widget.userData['salonRole'] == 'owner';
@@ -157,44 +288,47 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Szczegóły wizyty', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                      Text(isBlock ? 'Szczegóły blokady' : 'Szczegóły wizyty', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                       IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
                   const Divider(height: 24),
-                  FutureBuilder<DocumentSnapshot>(
-                      future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
-                      builder: (context, clientSnap) {
-                        String finalName = fallbackName;
-                        String phoneNumber = '';
-                        if (clientSnap.hasData && clientSnap.data!.exists) {
-                          final cData = clientSnap.data!.data() as Map<String, dynamic>;
-                          final String fName = cData['firstName'] ?? fallbackName;
-                          final String lName = cData['lastName'] ?? '';
-                          finalName = lName.isNotEmpty ? "$fName $lName" : fName;
-                          phoneNumber = cData['phoneNumber'] ?? cData['phone'] ?? 'Brak numeru w profilu';
+
+                  if (!isBlock) // 🚀 Pokazujemy klienta tylko jeśli to prawdziwa wizyta
+                    FutureBuilder<DocumentSnapshot>(
+                        future: clientId != null ? FirebaseFirestore.instance.collection('users').doc(clientId).get() : null,
+                        builder: (context, clientSnap) {
+                          String finalName = fallbackName;
+                          String phoneNumber = '';
+                          if (clientSnap.hasData && clientSnap.data!.exists) {
+                            final cData = clientSnap.data!.data() as Map<String, dynamic>;
+                            final String fName = cData['firstName'] ?? fallbackName;
+                            final String lName = cData['lastName'] ?? '';
+                            finalName = lName.isNotEmpty ? "$fName $lName" : fName;
+                            phoneNumber = cData['phoneNumber'] ?? cData['phone'] ?? 'Brak numeru w profilu';
+                          }
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(backgroundColor: Colors.deepPurple.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.deepPurple)),
+                            title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                if (phoneNumber.isNotEmpty)
+                                  Padding(padding: const EdgeInsets.only(top: 4.0), child: Row(children: [const Icon(Icons.phone, size: 14, color: Colors.deepPurple), const SizedBox(width: 6), Text(phoneNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.deepPurple))])),
+                              ],
+                            ),
+                          );
                         }
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(backgroundColor: Colors.deepPurple.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.deepPurple)),
-                          title: const Text('Klientka', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(finalName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-                              if (phoneNumber.isNotEmpty)
-                                Padding(padding: const EdgeInsets.only(top: 4.0), child: Row(children: [const Icon(Icons.phone, size: 14, color: Colors.deepPurple), const SizedBox(width: 6), Text(phoneNumber, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.deepPurple))])),
-                            ],
-                          ),
-                        );
-                      }
-                  ),
+                    ),
+
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(backgroundColor: Colors.pinkAccent.withOpacity(0.1), child: const Icon(Icons.spa, color: Colors.pinkAccent)),
-                    title: const Text('Usługa', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    leading: CircleAvatar(backgroundColor: isBlock ? Colors.grey.withOpacity(0.2) : Colors.pinkAccent.withOpacity(0.1), child: Icon(isBlock ? Icons.block : Icons.spa, color: isBlock ? Colors.grey[700] : Colors.pinkAccent)),
+                    title: Text(isBlock ? 'Status' : 'Usługa', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     subtitle: Text(serviceName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-                    trailing: Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                    trailing: isBlock ? null : Text('${price.toStringAsFixed(2)} zł', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -203,7 +337,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     subtitle: Text('$displayDate\n$time - $formattedEndTime ($duration min)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
                   const SizedBox(height: 24),
-                  if (clientId != null && clientId.isNotEmpty)
+                  if (!isBlock && clientId != null && clientId.isNotEmpty) // 🚀 Historia klienta wyłączona dla blokady
                     SizedBox(
                       width: double.infinity, height: 48,
                       child: OutlinedButton.icon(
@@ -227,14 +361,14 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                             builder: (BuildContext dialogContext) {
                               return AlertDialog(
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                title: const Row(
+                                title: Row(
                                   children: [
-                                    Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-                                    SizedBox(width: 8),
-                                    Text('Odwołaj wizytę'),
+                                    const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                    const SizedBox(width: 8),
+                                    Text(isBlock ? 'Usuń blokadę' : 'Odwołaj wizytę'),
                                   ],
                                 ),
-                                content: const Text('Czy na pewno chcesz odwołać tę wizytę? Tej operacji nie można cofnąć, a klientka otrzyma powiadomienie.'),
+                                content: Text(isBlock ? 'Czy na pewno chcesz usunąć tę blokadę czasu?' : 'Czy na pewno chcesz odwołać tę wizytę? Tej operacji nie można cofnąć, a klientka otrzyma powiadomienie.'),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(dialogContext),
@@ -250,7 +384,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                         await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).delete();
 
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wizyta została odwołana.'), backgroundColor: Colors.black87));
+                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isBlock ? 'Blokada została usunięta.' : 'Wizyta została odwołana.'), backgroundColor: Colors.black87));
                                         }
                                       } catch (e) {
                                         if (context.mounted) {
@@ -258,7 +392,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                         }
                                       }
                                     },
-                                    child: const Text('Tak, odwołaj'),
+                                    child: Text(isBlock ? 'Tak, usuń blokadę' : 'Tak, odwołaj'),
                                   ),
                                 ],
                               );
@@ -266,10 +400,10 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                           );
                         },
                         icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
-                        label: const Text('Odwołaj wizytę', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                        label: Text(isBlock ? 'Usuń blokadę czasu' : 'Odwołaj wizytę', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.redAccent)),
                       ),
                     ),
-                  ], // <-- Koniec warunku if
+                  ],
                 ],
               ),
             ),
@@ -491,7 +625,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           final daysOfWeek = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
           return GestureDetector(
             onTap: () {
-              // 🚀 Resetujemy stan przeciągania przy zmianie daty, by uniknąć zawieszonego "szarego kafelka"
               _resetDraggingState();
               setState(() => _selectedDate = date);
             },
@@ -772,7 +905,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                           final eData = emp.data() as Map<String, dynamic>;
                                                           final String empFirstName = eData['firstName'] ?? 'Stylistka';
 
-                                                          // 🚀 NOWE: Uprawnienia! Czy to właściciel salonu, czy to jest kolumna tej konkretnej stylistki?
                                                           final bool canManageThisColumn = isOwner || (user.uid == empId);
 
                                                           return SizedBox(
@@ -811,13 +943,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                                 bool hasBooking = appointmentData != null;
                                                                 bool drawBottomLine = !hasBooking || isEndOfBooking;
+                                                                bool isBlock = appointmentData?['isBlock'] ?? false; // 🚀 Czy to blokada czasowa?
 
                                                                 return DragTarget<Map<String, dynamic>>(
                                                                   onWillAcceptWithDetails: (details) {
-                                                                    // 1. Nie możemy upuszczać wizyt na cudzą kolumnę (chyba że jesteśmy szefową)
                                                                     if (!canManageThisColumn) return false;
-
-                                                                    // 🚀 2. POPRAWKA: Blokujemy od razu tylko jeśli salon jest zamknięty (USUNIĘTO hasBooking!)
                                                                     if (isSlotClosed) return false;
 
                                                                     final draggedData = details.data;
@@ -827,12 +957,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                     int newStart = currentMinutesFromDayStart;
                                                                     int newEnd = newStart + draggedDuration;
 
-                                                                    // 3. Blokada wyjścia poza godziny otwarcia
                                                                     if (newEnd > closeInMinutes) return false;
 
-                                                                    // 4. Zaawansowane sprawdzanie kolizji
                                                                     for (var appDoc in activeAppointments) {
-                                                                      // Ignorujemy wizytę, którą właśnie przesuwamy (dzięki temu możemy najechać na jej własne stare miejsce!)
                                                                       if (appDoc.id == draggedAppId) continue;
 
                                                                       final d = appDoc.data() as Map<String, dynamic>;
@@ -843,13 +970,11 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       int appDuration = d['duration'] ?? 30;
                                                                       int appEnd = appStart + appDuration;
 
-                                                                      // Sprawdzamy, czy w tym samym czasie nie ma INNEJ wizyty
                                                                       if (newStart < appEnd && newEnd > appStart) {
-                                                                        return false; // Wykryto kolizję z obcą wizytą!
+                                                                        return false;
                                                                       }
                                                                     }
-
-                                                                    return true; // Droga wolna!
+                                                                    return true;
                                                                   },
                                                                   onAcceptWithDetails: (details) async {
                                                                     final draggedData = details.data;
@@ -866,7 +991,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         'employeeName': empFirstName,
                                                                       });
                                                                       if (context.mounted) {
-                                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Przesunięto wizytę!'), backgroundColor: Colors.green));
+                                                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Przesunięto!'), backgroundColor: Colors.green));
                                                                       }
                                                                     } catch (e) {
                                                                       if (context.mounted) {
@@ -897,6 +1022,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         int duration = appData['duration'] ?? 30;
                                                                         double fullHeight = (duration / 15) * 55.0;
 
+                                                                        // 🚀 Zmiana wyglądu jeśli to zablokowany czas
                                                                         Widget bookingTile = GestureDetector(
                                                                           onTap: () => _showAppointmentDetails(bookedAppId!, appData),
                                                                           child: Container(
@@ -904,7 +1030,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                             margin: EdgeInsets.only(left: 3, right: 3, top: isStartOfBooking ? 3 : 0, bottom: isEndOfBooking ? 3 : 0),
                                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                                                                             decoration: BoxDecoration(
-                                                                                color: Colors.deepPurple,
+                                                                                color: isBlock ? Colors.grey[400] : Colors.deepPurple,
                                                                                 borderRadius: BorderRadius.vertical(
                                                                                     top: isStartOfBooking ? const Radius.circular(8) : Radius.zero,
                                                                                     bottom: isEndOfBooking ? const Radius.circular(8) : Radius.zero
@@ -922,12 +1048,12 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                                     int endMin = startMin + duration;
                                                                                     String endHour = (endMin ~/ 60).toString();
                                                                                     String endMinute = (endMin % 60).toString().padLeft(2, '0');
-                                                                                    return Text("${appData['time']} - $endHour:$endMinute", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400));
+                                                                                    return Text("${appData['time']} - $endHour:$endMinute", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isBlock ? Colors.white : Colors.white.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w400));
                                                                                   },
                                                                                 ),
                                                                                 const SizedBox(height: 1),
-                                                                                Expanded(child: Container(alignment: Alignment.centerLeft, child: Text(appData['clientName'] ?? 'Klient', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)))),
-                                                                                Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                                                                                Expanded(child: Container(alignment: Alignment.centerLeft, child: Text(isBlock ? 'Zablokowane' : (appData['clientName'] ?? 'Klient'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)))),
+                                                                                if (!isBlock) Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
                                                                               ],
                                                                             )
                                                                                 : const SizedBox.shrink(),
@@ -938,8 +1064,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                           bookingTile = Opacity(opacity: 0.3, child: bookingTile);
                                                                         }
 
-                                                                        // 🚀 BLOKADA NR 2: Jeśli to nie jest Twoja kolumna (i nie jesteś szefem),
-                                                                        // to zwracamy zwykły kafelek bez opcji przeciągania (LongPressDraggable).
                                                                         if (!canManageThisColumn) {
                                                                           return bookingTile;
                                                                         }
@@ -957,7 +1081,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                               height: fullHeight,
                                                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                                                                               decoration: BoxDecoration(
-                                                                                  color: Colors.deepPurple.withOpacity(0.95),
+                                                                                  color: isBlock ? Colors.grey[600]!.withOpacity(0.95) : Colors.deepPurple.withOpacity(0.95),
                                                                                   borderRadius: BorderRadius.circular(8),
                                                                                   boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 2)]
                                                                               ),
@@ -967,9 +1091,9 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                                 children: [
                                                                                   Text("${appData['time']}", style: const TextStyle(color: Colors.white, fontSize: 10)),
                                                                                   const SizedBox(height: 4),
-                                                                                  Text(appData['clientName'] ?? 'Klient', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                                                  Text(isBlock ? 'Zablokowane' : (appData['clientName'] ?? 'Klient'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                                                                                   const SizedBox(height: 2),
-                                                                                  Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                                                                                  if (!isBlock) Text(appData['serviceName'] ?? 'Usługa', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10)),
                                                                                 ],
                                                                               ),
                                                                             ),
@@ -979,7 +1103,10 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         );
                                                                       })
                                                                           : InkWell(
-                                                                        onTap: isSlotClosed ? null : () {},
+                                                                        onTap: isSlotClosed || !canManageThisColumn ? null : () {
+                                                                          // 🚀 KLIKNIĘCIE W PUSTE MIEJSCE - POKAZANIE OKNA BLOKADY
+                                                                          _showBlockTimeDialog(empId, empFirstName, formattedTime, currentMinutesFromDayStart, closeInMinutes);
+                                                                        },
                                                                         child: isSlotClosed ? Center(child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox()) : const SizedBox.expand(),
                                                                       ),
                                                                     );
@@ -1375,50 +1502,19 @@ class ClientHistoryScreen extends StatelessWidget {
               final lName = data['lastName'] ?? '';
               fullName = lName.isNotEmpty ? "$fName $lName" : fName;
             }
-            return Text('Historia (10): $fullName');
+            return Text('Historia: $fullName');
           },
         ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 🚀 TWARDY LIMIT W BAZIE DANYCH: Pobieramy tylko 10 najnowszych wizyt
-        stream: FirebaseFirestore.instance
-            .collection('appointments')
-            .where('salonId', isEqualTo: salonId)
-            .where('clientId', isEqualTo: clientId)
-            .orderBy('date', descending: true) // Wymaga indeksu w Firebase!
-            .limit(10) // <-- BLOKADA (Zabezpiecza przed kosztami)
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('appointments').where('salonId', isEqualTo: salonId).where('clientId', isEqualTo: clientId).snapshots(),
         builder: (context, snapshot) {
-          // Obsługa błędu braku indeksu
-          if (snapshot.hasError) {
-            print("🚨 BŁĄD FIREBASE: ${snapshot.error}");
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 50),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Błąd bazy danych (prawdopodobnie brak indeksu).\nSprawdź konsolę w środowisku programistycznym i kliknij w wygenerowany link, aby utworzyć indeks Firebase.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey[700]),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Brak historii wizyt dla tej klientki.', style: TextStyle(color: Colors.grey, fontSize: 16)));
 
           final docs = snapshot.data!.docs.toList();
-
-          // Lokalne sortowanie czasowe dla wizyt z tego samego dnia
           docs.sort((a, b) {
             final dataA = a.data() as Map<String, dynamic>;
             final dataB = b.data() as Map<String, dynamic>;
@@ -1436,7 +1532,7 @@ class ClientHistoryScreen extends StatelessWidget {
               final time = data['time'] ?? '';
               final serviceName = data['serviceName'] ?? 'Usługa';
               final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-              final employeeName = data['employeeName'] ?? 'Stylistka';
+              final employeeName = data['employeeName'] ?? '';
 
               String displayDate = date;
               try {
