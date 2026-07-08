@@ -66,7 +66,6 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
     );
   }
 
-  // 🚀 NOWE: Funkcja otwierająca modal oceniania
   void _rateAppointment(String appointmentId, String salonId, String serviceName, String employeeName) {
     showModalBottomSheet(
       context: context,
@@ -318,6 +317,9 @@ class _ClientAppointmentsScreenState extends State<ClientAppointmentsScreen> {
 // ============================================================================
 // KOMPONENT OCENIANIA WIZYTY
 // ============================================================================
+// ============================================================================
+// KOMPONENT OCENIANIA WIZYTY
+// ============================================================================
 class _RatingBottomSheet extends StatefulWidget {
   final String appointmentId;
   final String salonId;
@@ -335,20 +337,26 @@ class _RatingBottomSheetState extends State<_RatingBottomSheet> {
   int _currentRating = 0;
   final TextEditingController _reviewController = TextEditingController();
   bool _isLoading = false;
+  String? _errorMessage; // 🚀 DODANE: Zmienna do przechowywania błędu
 
   Future<void> _submitRating() async {
+    // 🚀 NOWE: Zamiast SnackBar, ustawiamy błąd wewnątrz okienka
     if (_currentRating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Proszę wybrać ilość gwiazdek!'), backgroundColor: Colors.redAccent));
+      setState(() {
+        _errorMessage = 'Proszę wybrać ilość gwiazdek!';
+      });
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null; // Czyścimy błąd po kliknięciu
+    });
 
     try {
       final salonRef = FirebaseFirestore.instance.collection('salons').doc(widget.salonId);
       final appointmentRef = FirebaseFirestore.instance.collection('appointments').doc(widget.appointmentId);
 
-      // Transakcja, aby bezpiecznie obliczyć nową średnią dla salonu
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final salonSnapshot = await transaction.get(salonRef);
         if (!salonSnapshot.exists) throw Exception("Nie znaleziono salonu");
@@ -357,7 +365,6 @@ class _RatingBottomSheetState extends State<_RatingBottomSheet> {
         int currentCount = salonData['ratingCount'] ?? 0;
         double currentAvg = (salonData['averageRating'] as num?)?.toDouble() ?? 0.0;
 
-        // Obliczanie nowej średniej
         double newAvg = ((currentAvg * currentCount) + _currentRating) / (currentCount + 1);
 
         transaction.update(salonRef, {
@@ -369,7 +376,7 @@ class _RatingBottomSheetState extends State<_RatingBottomSheet> {
           'isRated': true,
           'rating': _currentRating,
           'review': _reviewController.text.trim(),
-          'clientNameForReview': widget.clientName, // Zapisujemy kto dodał opinię
+          'clientNameForReview': widget.clientName,
           'ratedAt': FieldValue.serverTimestamp(),
         });
       });
@@ -380,8 +387,10 @@ class _RatingBottomSheetState extends State<_RatingBottomSheet> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu: $e'), backgroundColor: Colors.redAccent));
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Błąd zapisu: $e'; // Wyświetlenie błędu z bazy
+        });
       }
     }
   }
@@ -393,63 +402,80 @@ class _RatingBottomSheetState extends State<_RatingBottomSheet> {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(25))
       ),
-      // 🚀 POPRAWKA: Dodano `MediaQuery.of(context).padding.bottom`, aby unieść przycisk nad pasek systemowy!
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24,
           top: 12, left: 24, right: 24
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(height: 5, width: 40, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-          const SizedBox(height: 16),
-          const Text('Oceń wizytę', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text('${widget.serviceName} u: ${widget.employeeName}', style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              return IconButton(
-                iconSize: 45,
-                icon: Icon(
-                  index < _currentRating ? Icons.star : Icons.star_border,
-                  color: Colors.amber,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _currentRating = index + 1;
-                  });
-                },
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _reviewController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Napisz kilka słów (opcjonalnie)...',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(height: 5, width: 40, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 16),
+            const Text('Oceń wizytę', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('${widget.serviceName} u: ${widget.employeeName}', style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                return IconButton(
+                  iconSize: 45,
+                  icon: Icon(
+                    index < _currentRating ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _currentRating = index + 1;
+                      _errorMessage = null; // 🚀 Ukrywa błąd, gdy użytkownik wybierze gwiazdkę
+                    });
+                  },
+                );
+              }),
             ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _submitRating,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber[700],
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reviewController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Napisz kilka słów (opcjonalnie)...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Zapisz opinię', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
-          ),
-        ],
+            const SizedBox(height: 16), // Zmniejszony odstęp
+
+            // 🚀 NOWE: Wyświetlanie błędu nad przyciskiem
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
+                    const SizedBox(width: 8),
+                    Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                  ],
+                ),
+              ),
+
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _submitRating,
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber[700],
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Zapisz opinię', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

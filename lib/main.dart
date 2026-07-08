@@ -243,7 +243,7 @@ class AppDrawer extends StatelessWidget {
                   onTap: () => _toggleView(context, 'salon'),
                 ),
             ] else ...[
-              if (currentRole == 'client')
+              if (currentRole == 'client') ...[
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('invitations')
@@ -281,6 +281,25 @@ class AppDrawer extends StatelessWidget {
                     );
                   },
                 ),
+
+                // 🚀 NOWE: Przycisk zakładania salonu dla klientek
+                ListTile(
+                  leading: const Icon(Icons.storefront_outlined, color: Colors.deepPurple),
+                  title: const Text('Załóż własny salon', style: TextStyle(fontWeight: FontWeight.w500)),
+                  subtitle: const Text('Zacznij zarządzać swoim biznesem', style: TextStyle(fontSize: 11)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      // Dodajemy rolę 'salon' do tablicy ról i przełączamy widok
+                      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                        'roles': FieldValue.arrayUnion(['salon']),
+                        'currentView': 'salon',
+                      });
+                    }
+                  },
+                ),
+              ],
             ],
 
             const Spacer(),

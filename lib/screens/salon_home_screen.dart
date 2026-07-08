@@ -113,6 +113,145 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
     super.dispose();
   }
 
+  // 🚀 POMOCNICZA FUNKCJA DO PARSOWANIA DAT
+  DateTime _parseDateTime(String date, String time) {
+    try {
+      final dateParts = date.split('-');
+      final timeParts = time.split(':');
+      return DateTime(
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
+        int.parse(timeParts[0]),
+        int.parse(timeParts[1]),
+      );
+    } catch (e) {
+      return DateTime(2000); // Awaryjna stara data
+    }
+  }
+
+  // 🚀 NOWA FUNKCJA: Odejście z salonu dla stylistki
+  Future<void> _leaveSalon(String salonId, String salonName) async {
+    final TextEditingController confirmController = TextEditingController();
+
+    bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.exit_to_app, color: Colors.redAccent),
+                SizedBox(width: 8),
+                Text('Odejście z salonu', style: TextStyle(color: Colors.redAccent, fontSize: 18)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Czy na pewno chcesz opuścić ten salon? Przyszłe wizyty klientek zostaną odwołane.'),
+                const SizedBox(height: 16),
+                Text('Aby potwierdzić, wpisz nazwę: $salonName', style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: confirmController,
+                  decoration: InputDecoration(
+                    hintText: 'Nazwa salonu',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Anuluj', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                onPressed: () {
+                  if (confirmController.text.trim() == salonName) {
+                    Navigator.pop(dialogContext, true);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wpisana nazwa salonu jest nieprawidłowa!'), backgroundColor: Colors.redAccent));
+                  }
+                },
+                child: const Text('Odejdź'),
+              ),
+            ],
+          );
+        }
+    );
+
+    if (confirm == true) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+
+        showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)));
+
+        final servicesSnapshot = await FirebaseFirestore.instance
+            .collection('services')
+            .where('salonId', isEqualTo: salonId)
+            .where('employeeId', isEqualTo: user.uid)
+            .get();
+
+        final appointmentsSnapshot = await FirebaseFirestore.instance
+            .collection('appointments')
+            .where('salonId', isEqualTo: salonId)
+            .where('employeeId', isEqualTo: user.uid)
+            .get();
+
+        WriteBatch batch = FirebaseFirestore.instance.batch();
+        final now = DateTime.now();
+
+        // 1. Usługi - archiwizujemy (żeby nie psuły historii)
+        for (var doc in servicesSnapshot.docs) {
+          batch.update(doc.reference, {'archived': true});
+        }
+
+        // 2. Wizyty - Przeszłe Archiwizujemy / Przyszłe KASUJEMY
+        for (var doc in appointmentsSnapshot.docs) {
+          final data = doc.data();
+          final appDate = _parseDateTime(data['date'] ?? '', data['time'] ?? '');
+
+          if (appDate.isBefore(now)) {
+            // Wizyta historyczna (zakończona) - Zostawiamy ją w bazie dla reputacji, ale archiwizujemy
+            batch.update(doc.reference, {'archived': true});
+          } else {
+            // Wizyta przyszła (nadchodząca) - Usuwamy! (To wyśle powiadomienie Push do klientki o odwołaniu)
+            batch.delete(doc.reference);
+          }
+        }
+
+        // 3. Usuń stylistkę z tablicy employees w dokumencie salonu
+        DocumentReference salonRef = FirebaseFirestore.instance.collection('salons').doc(salonId);
+        batch.update(salonRef, {
+          'employees': FieldValue.arrayRemove([user.uid])
+        });
+
+        // 4. Wyczyść dane salonu u użytkownika i cofnij rolę
+        DocumentReference userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        batch.update(userRef, {
+          'salonId': FieldValue.delete(),
+          'salonName': FieldValue.delete(),
+          'salonRole': FieldValue.delete(),
+          'roles': FieldValue.arrayRemove(['salon']), // Zabieramy rolę salonu
+          'currentView': 'client', // Automatycznie przełączamy na widok klientki
+        });
+
+        final navigator = Navigator.of(context);
+        await batch.commit();
+        navigator.pop(); // Zamknij loader
+
+      } catch (e) {
+        Navigator.pop(context); // Zamknij loader w razie błędu
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e'), backgroundColor: Colors.redAccent));
+      }
+    }
+  }
+
   // 🚀 NOWA FUNKCJA: Okno dialogowe do dodawania bloku czasowego
   void _showBlockTimeDialog(String empId, String empFirstName, String startTime, int startMinutesFromDay, int closeInMinutes) {
     TimeOfDay? selectedEndTime;
@@ -222,6 +361,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         'time': startTime,
                         'duration': duration,
                         'isBlock': true, // 🚀 FLAGA BLOKADY
+                        'archived': false, // 🚀 FLAGA ARCHIWIZACJI (Nowe wizyty jej nie mają)
                         'serviceName': 'Niedostępność / Przerwa',
                         'clientName': 'Zablokowany czas',
                         'price': 0.0,
@@ -496,6 +636,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
           'name': name,
           'price': price,
           'duration': duration,
+          'archived': false, // 🚀 FLAGA ARCHIWIZACJI
           'createdAt': FieldValue.serverTimestamp(),
         });
       } else {
@@ -791,12 +932,22 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                   final String formattedDateStr = "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
 
+                  // 🚀 ZMIENIONO: Bez where('archived') aby uniknąć błędów indeksów. Filtrujemy w pamięci poniżej!
                   return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('appointments').where('salonId', isEqualTo: liveUserData['salonId']).where('date', isEqualTo: formattedDateStr).snapshots(),
+                    stream: FirebaseFirestore.instance
+                        .collection('appointments')
+                        .where('salonId', isEqualTo: liveUserData['salonId'])
+                        .where('date', isEqualTo: formattedDateStr)
+                        .snapshots(),
                     builder: (context, appointmentsSnapshot) {
                       if (!appointmentsSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
 
-                      final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.data?.docs ?? [];
+                      // 🚀 FILTROWANIE W PAMIĘCI (Bezpieczne, omija indeksy Firebase)
+                      final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final bool isArchived = data['archived'] ?? false;
+                        return !isArchived;
+                      }).toList();
 
                       return StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('users').where('salonId', isEqualTo: liveUserData['salonId']).snapshots(),
@@ -924,7 +1075,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                 bool isStartOfBooking = false;
                                                                 bool isEndOfBooking = false;
 
-                                                                for (var appDoc in activeAppointments) {
+                                                                for (var appDoc in activeAppointments) { // 🚀 Używamy odfiltrowanej listy z pamięci
                                                                   final d = appDoc.data() as Map<String, dynamic>;
                                                                   if (d['employeeId'] != empId) continue;
                                                                   List<String> timeParts = (d['time'] ?? '00:00').split(':');
@@ -943,7 +1094,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                                 bool hasBooking = appointmentData != null;
                                                                 bool drawBottomLine = !hasBooking || isEndOfBooking;
-                                                                bool isBlock = appointmentData?['isBlock'] ?? false; // 🚀 Czy to blokada czasowa?
+                                                                bool isBlock = appointmentData?['isBlock'] ?? false;
 
                                                                 return DragTarget<Map<String, dynamic>>(
                                                                   onWillAcceptWithDetails: (details) {
@@ -959,7 +1110,7 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
 
                                                                     if (newEnd > closeInMinutes) return false;
 
-                                                                    for (var appDoc in activeAppointments) {
+                                                                    for (var appDoc in activeAppointments) { // 🚀 Używamy odfiltrowanej listy
                                                                       if (appDoc.id == draggedAppId) continue;
 
                                                                       final d = appDoc.data() as Map<String, dynamic>;
@@ -1022,7 +1173,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                         int duration = appData['duration'] ?? 30;
                                                                         double fullHeight = (duration / 15) * 55.0;
 
-                                                                        // 🚀 Zmiana wyglądu jeśli to zablokowany czas
                                                                         Widget bookingTile = GestureDetector(
                                                                           onTap: () => _showAppointmentDetails(bookedAppId!, appData),
                                                                           child: Container(
@@ -1104,7 +1254,6 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                                                                       })
                                                                           : InkWell(
                                                                         onTap: isSlotClosed || !canManageThisColumn ? null : () {
-                                                                          // 🚀 KLIKNIĘCIE W PUSTE MIEJSCE - POKAZANIE OKNA BLOKADY
                                                                           _showBlockTimeDialog(empId, empFirstName, formattedTime, currentMinutesFromDayStart, closeInMinutes);
                                                                         },
                                                                         child: isSlotClosed ? Center(child: isFullHour ? const Icon(Icons.lock_outline, size: 14, color: Colors.black26) : const SizedBox()) : const SizedBox.expand(),
@@ -1199,6 +1348,25 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                         },
                       ),
                     ),
+
+                    // 🚀 NOWE: Przycisk odejścia z salonu (tylko dla stylistek)
+                    if (!isOwner) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _leaveSalon(liveUserData['salonId'], currentSalonName),
+                          icon: const Icon(Icons.exit_to_app),
+                          label: const Text('Odejdź z salonu', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.redAccent,
+                            side: const BorderSide(color: Colors.redAccent, width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1295,19 +1463,27 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
                     const SizedBox(height: 20),
                     Expanded(
                       child: StreamBuilder<QuerySnapshot>(
+                        // 🚀 Upewniamy się, że nie wyświetlamy archiwalnych usług
                         stream: _selectedEmployeeFilter == 'all'
                             ? FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).snapshots()
                             : FirebaseFirestore.instance.collection('services').where('salonId', isEqualTo: liveUserData['salonId']).where('employeeId', isEqualTo: _selectedEmployeeFilter).snapshots(),
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.deepPurple));
-                          if (snapshot.data!.docs.isEmpty) {
+
+                          // Filtrujemy w pamięci
+                          final validServices = snapshot.data!.docs.where((doc) {
+                            final bool isArch = (doc.data() as Map<String, dynamic>)['archived'] ?? false;
+                            return !isArch;
+                          }).toList();
+
+                          if (validServices.isEmpty) {
                             return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text("Brak zdefiniowanych usług dla wybranego filtra.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))));
                           }
 
                           return ListView.builder(
-                            itemCount: snapshot.data!.docs.length,
+                            itemCount: validServices.length,
                             itemBuilder: (context, index) {
-                              final doc = snapshot.data!.docs[index];
+                              final doc = validServices[index];
                               final service = doc.data() as Map<String, dynamic>;
                               final String sId = doc.id;
                               final String name = service['name'] ?? '';

@@ -481,11 +481,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               .snapshots(),
           builder: (context, appointmentsSnapshot) {
 
-            // MĄDRE FILTROWANIE: Pobieramy dane z cache, ale odrzucamy "duchy" z poprzedniego dnia
+            // 🚀 MĄDRE FILTROWANIE: Pobieramy dane z cache, ale odrzucamy "duchy" z poprzedniego dnia oraz ARCHIWALNE
             final List<QueryDocumentSnapshot> activeAppointments = appointmentsSnapshot.hasData
                 ? appointmentsSnapshot.data!.docs.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
-              return data['date'] == formattedDateStr;
+              final bool isArchived = data['archived'] ?? false;
+              return data['date'] == formattedDateStr && !isArchived;
             }).toList()
                 : [];
 
@@ -660,7 +661,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                                                       bool isStartOfBooking = false;
                                                       bool isEndOfBooking = false;
 
-                                                      for (var appDoc in activeAppointments) {
+                                                      for (var appDoc in activeAppointments) { // 🚀 Iterujemy po przefiltrowanej liscie (bez archiwalnych)
                                                         final d = appDoc.data() as Map<String, dynamic>;
                                                         if (d['employeeId'] != empId) continue;
 
@@ -765,14 +766,21 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.pinkAccent));
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+
+                // 🚀 Zabezpieczenie przed pokazaniem archiwalnych usług klientce
+                final validServices = snapshot.hasData ? snapshot.data!.docs.where((doc) {
+                  final bool isArch = (doc.data() as Map<String, dynamic>)['archived'] ?? false;
+                  return !isArch;
+                }).toList() : [];
+
+                if (validServices.isEmpty) {
                   return const Center(child: Text('Ta pracownica nie ma przypisanych usług w cenniku.', style: TextStyle(color: Colors.grey)));
                 }
 
                 return ListView.builder(
-                  itemCount: snapshot.data!.docs.length,
+                  itemCount: validServices.length,
                   itemBuilder: (context, index) {
-                    final doc = snapshot.data!.docs[index];
+                    final doc = validServices[index];
                     final service = doc.data() as Map<String, dynamic>;
                     final String serviceName = service['name'] ?? 'Zabieg';
                     final double price = (service['price'] as num?)?.toDouble() ?? 0.0;
@@ -851,6 +859,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
       bool hasOverlap = false;
       for (var doc in existingAppointments.docs) {
         final data = doc.data();
+
+        // 🚀 POMIJAMY ARCHIWALNE WIZYTY PRZY SPRAWDZANIU NAKŁADANIA SIĘ!
+        final bool isArchived = data['archived'] ?? false;
+        if (isArchived) continue;
+
         List<String> appTimeParts = (data['time'] ?? '00:00').split(':');
         int appStartMin = (int.tryParse(appTimeParts[0]) ?? 0) * 60 + (int.tryParse(appTimeParts[1]) ?? 0);
         int appDuration = data['duration'] ?? 30;
@@ -886,6 +899,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
         'isRated': false,
         'rating': 0,
         'review': '',
+        'archived': false, // 🚀 FLAGA ARCHIWIZACJI: false (Gwarancja widoczności)
       });
 
       if (mounted) {
