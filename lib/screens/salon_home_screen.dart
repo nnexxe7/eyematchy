@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart';
 import 'eye_match_screen.dart';
 import 'package:firebase_messaging/firebase_messaging.dart'; // 🚀 IMPORT POWIADOMIEŃ
+import 'package:flutter/services.dart';
 
 class SalonHomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -685,17 +686,46 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
             children: [
               Text(serviceId == null ? 'Dodaj nową usługę' : 'Edytuj usługę', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
-              TextField(controller: _serviceNameController, decoration: InputDecoration(labelText: 'Nazwa usługi (np. Przedłużanie rzęs 1:1)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+              TextField(
+                  controller: _serviceNameController,
+                  decoration: InputDecoration(labelText: 'Nazwa usługi (np. Przedłużanie rzęs 1:1)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(child: TextField(controller: _servicePriceController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Cena (PLN)', prefixText: 'zł ', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))))),
+                  Expanded(
+                      child: TextField(
+                          controller: _servicePriceController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                          ],
+                          decoration: InputDecoration(labelText: 'Cena (PLN)', prefixText: 'zł ', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))
+                      )
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: TextField(controller: _serviceDurationController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Czas (minuty)', suffixText: ' min', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))))),
+                  Expanded(
+                      child: TextField(
+                          controller: _serviceDurationController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(labelText: 'Czas (minuty)', suffixText: ' min', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))
+                      )
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
-              SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: () => _saveService(serviceId: serviceId), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Zapisz usługę', style: TextStyle(fontSize: 16)))),
+              SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                      onPressed: () => _saveService(serviceId: serviceId),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: const Text('Zapisz usługę', style: TextStyle(fontSize: 16))
+                  )
+              ),
             ],
           ),
         ),
