@@ -242,7 +242,7 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
             DropdownButtonFormField<String>(
               value: _surveyEyelid,
               decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-              items: ['Normalna', 'Opadająca na środku', 'Opadająca w zewn. kąciku', 'Opadająca po całości', 'W wewn. kąciku'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              items: ['Normalna', 'Opadająca na środku', 'Opadająca w zewn. kąciku', 'Opadająca po całości', 'Opadająca w wewn. kąciku'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
               onChanged: (val) => setState(() => _surveyEyelid = val!),
             ),
             const SizedBox(height: 24),
@@ -292,7 +292,6 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
             const Text('7 Punktów Anatomii', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
             const SizedBox(height: 12),
 
-            // 🚀 RENDEROWANIE 7 PUNKTÓW
             ..._analysisResult!.points.map((point) {
               return Card(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -305,12 +304,13 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
                     children: [
                       Text(point['title']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 4),
-                      Text("Kształt / Diagnoza: ${point['value']}", style: TextStyle(color: Colors.grey[700], fontSize: 14)),
+                      Text("Diagnoza: ${point['value']}", style: TextStyle(color: Colors.grey[700], fontSize: 14)),
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(color: Colors.pink[50], borderRadius: BorderRadius.circular(8)),
-                        child: Text("Rekomendacja: ${point['rec']}", style: const TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.w600, fontSize: 13)),
+                        child: Text("Rekomendacja:\n${point['rec']}", style: const TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.w600, fontSize: 13, height: 1.4)),
                       ),
                     ],
                   ),
@@ -323,7 +323,6 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
             const Text('Wyniki na podstawie głosowania algorytmu', style: TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 12),
 
-            // 🚀 RENDEROWANIE PODIUM TOP 3
             ..._analysisResult!.topStyles.asMap().entries.map((entry) {
               int rank = entry.key + 1;
               var styleData = entry.value;
@@ -361,7 +360,6 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
     );
   }
 
-  // 🚀 ZBUDOWANY OD NOWA BEZPIECZNY OVERLAY KAMERY Z POPRAWIONYMI TEKSTAMI
   Widget _buildCameraOverlay(String title, String subtitle, bool isProfile) {
     final double w = isProfile ? 240.0 : 260.0;
     final double h = 340.0;
@@ -431,7 +429,6 @@ class _EyeMatchScreenState extends State<EyeMatchScreen> {
     );
   }
 
-  // 🚀 WIDOK PO WYKONANIU ZDJĘCIA Z POPRAWIONYM KOMUNIKATEM BŁĘDU
   Widget _buildPhotoResultView(XFile photo, List<Face> faces, Size? originalPhotoSize, VoidCallback onNextPressed, String buttonText) {
     Widget imageWidget = Image.file(File(photo.path), fit: BoxFit.cover);
 
@@ -657,77 +654,133 @@ class EyeMatchAnalyzer {
       }
     }
 
-    // 1. CECHY RZĘS (Z wywiadu)
-    String p1Rec = "Skręt C, CC";
+    // ==========================================
+    // 1. CECHY ANATOMICZNE RZĘS
+    // ==========================================
+    String p1Rec = "Skręt: C, CC";
     if (surveyLashAnatomy == 'Proste / rosnące w dół') {
-      p1Rec = "Skręt D, DD, L";
+      p1Rec = "Skręt: D, DD, L";
     }
     points.add({"title": "1. Cechy anatomiczne rzęs", "value": surveyLashAnatomy, "rec": p1Rec});
 
-    // 2. KSZTAŁT OKA (ML Kit Proporcje)
+    // ==========================================
+    // 2. KSZTAŁT OKA (ML Kit)
+    // ==========================================
     double leftEyeWidth = (leftOuterCorner.dx - leftInnerCorner.dx).abs();
     double leftEyeHeight = (leftBottomPupil.dy - leftTopPupil.dy).abs();
     double opennessRatio = leftEyeWidth > 0 ? (leftEyeHeight / leftEyeWidth) : 0;
 
-    String p2Value = "Migdałowe";
-    String p2Rec = "Wiewiórka, Okrągły, 5-6mm w kącikach, Skręt C/CC";
+    // Spadek od szczytu oka do kącika zewnętrznego (wykrywa Trójkąt/Daszek)
+    double triangleDrop = leftOuterCorner.dy - leftTopPupil.dy;
+
+    String p2Value = "Migdałowy (Kształt idealny)";
+    String p2Rec = "Norma (Brak korekty)";
+
     if (opennessRatio > 0.40) {
-      p2Value = "Okrągłe"; p2Rec = "Lis, Naturalny, 9-10mm, Skręt B/C"; vote(['Lis', 'Naturalny']);
+      p2Value = "Okrągły";
+      p2Rec = "Styl: Lis, Naturalny\nSkręt: B/C\nDługość: 9-10 mm";
+      vote(['Lis', 'Naturalny']);
     } else if (opennessRatio < 0.28) {
-      p2Value = "Wąskie"; p2Rec = "Wiewiórka, Okrągły, 5-6mm w kącikach, Skręt D"; vote(['Wiewiórka', 'Okrągły']);
-    } else {
-      vote(['Wiewiórka', 'Okrągły']);
+      if (triangleDrop > 4.0) {
+        p2Value = "Trójkątny";
+        p2Rec = "Styl: Wiewiórka, Okrągły\nSkręt: D\nDługość: 5-6 mm";
+        vote(['Wiewiórka', 'Okrągły']);
+      } else {
+        p2Value = "Wąski";
+        p2Rec = "Skręt: CC/D\nDługość: 8-9 mm";
+        vote(['Wiewiórka', 'Okrągły']);
+      }
     }
     points.add({"title": "2. Kształt oka", "value": p2Value, "rec": p2Rec});
 
-    // 3. ZEWNĘTRZNY KĄCIK (ML Kit Kąt)
+    // ==========================================
+    // 3. ROZMIESZCZENIE ZEWNĘTRZNEGO KĄCIKA
+    // ==========================================
     double tiltDelta = leftOuterCorner.dy - leftInnerCorner.dy;
-    String p3Value = "Normalny"; String p3Rec = "Brak specjalnych restrykcji";
+    String p3Value = "Normalne";
+    String p3Rec = "Norma (Brak korekty)";
+
     if (tiltDelta > 3.0) {
-      p3Value = "Opadający (Smutne oko)"; p3Rec = "Wiewiórka, Okrągły, 5-6mm, Skręt CC/D"; vote(['Wiewiórka', 'Okrągły']);
+      p3Value = "Opadający";
+      p3Rec = "Styl: Okrągły, Wiewiórka\nSkręt: CC/D\nDługość: 5-6 mm";
+      vote(['Wiewiórka', 'Okrągły']);
     } else if (tiltDelta < -3.0) {
-      p3Value = "Uniesiony (Kocie oko)"; p3Rec = "Lis, Naturalny, 9-10mm, Skręt B/C"; vote(['Lis', 'Naturalny']);
+      p3Value = "Uniesiony";
+      p3Rec = "Styl: Lis, Naturalny\nSkręt: B/C\nDługość: 9-10 mm";
+      vote(['Lis', 'Naturalny']);
     }
     points.add({"title": "3. Rozmieszczenie zewn. kącika", "value": p3Value, "rec": p3Rec});
 
+    // ==========================================
     // 4. GÓRNA POWIEKA (Z wywiadu)
-    String p4Rec = "Brak specjalnych restrykcji";
-    if (surveyEyelid != 'Normalna') {
-      p4Rec = "Lalka, Naturalny, Długie rzęsy, Skręt CC/D"; vote(['Lalka', 'Naturalny', 'Okrągły']);
+    // ==========================================
+    String p4Rec = "Norma (Brak korekty)";
+    if (surveyEyelid == 'Opadająca na środku') {
+      p4Rec = "Styl: Okrągły, Lalka\nSkręt: CC/D\nDługość: Długie rzęsy nad opadającą powieką";
+      vote(['Okrągły', 'Lalka']);
+    } else if (surveyEyelid == 'Opadająca w zewn. kąciku') {
+      p4Rec = "Styl: Naturalny, Wiewiórka\nSkręt: D/C\nDługość: Długie rzęsy nad opadającą powieką";
+      vote(['Naturalny', 'Wiewiórka']);
+    } else if (surveyEyelid == 'Opadająca po całości') {
+      p4Rec = "Styl: Naturalny, Lalka\nSkręt: D/C\nDługość: Długie rzęsy nad opadającą powieką";
+      vote(['Naturalny', 'Lalka']);
+    } else if (surveyEyelid == 'Opadająca w wewn. kąciku') {
+      p4Rec = "Długie rzęsy nad opadającą powieką";
+      vote(['Naturalny']);
     }
     points.add({"title": "4. Górna powieka", "value": surveyEyelid, "rec": p4Rec});
 
-    // 5. ROZSTAWIENIE OCZU (ML Kit Odległość)
+    // ==========================================
+    // 5. ROZSTAWIENIE OCZU (ML Kit)
+    // ==========================================
     double interOcularDistance = (rightInnerCorner.dx - leftInnerCorner.dx).abs();
-    String p5Value = "Normalne"; String p5Rec = "Brak restrykcji";
+    String p5Value = "Normalnie rozstawione";
+    String p5Rec = "Norma (Brak korekty)";
+
     if (leftEyeWidth > 0 && interOcularDistance > 0) {
       if (interOcularDistance < leftEyeWidth * 0.9) {
-        p5Value = "Zbliżone (Wąski rozstaw)"; p5Rec = "Lis, Naturalny, 9-10mm, Skręt B/C"; vote(['Lis', 'Naturalny']);
+        p5Value = "Zbliżone";
+        p5Rec = "Styl: Lis, Naturalny\nSkręt: B/C\nDługość: 9-10 mm";
+        vote(['Lis', 'Naturalny']);
       } else if (interOcularDistance > leftEyeWidth * 1.1) {
-        p5Value = "Dalekie (Szeroki rozstaw)"; p5Rec = "Okrągły, Lalka, Wiewiórka, 5-6mm zewn., Skręt C/D"; vote(['Okrągły', 'Lalka', 'Wiewiórka']);
+        p5Value = "Daleko";
+        p5Rec = "Styl: Okrągły, Wiewiórka, Lalka\nSkręt: C/D\nDługość: 5-6 mm";
+        vote(['Okrągły', 'Lalka', 'Wiewiórka']);
       }
     }
     points.add({"title": "5. Rozstawienie oczu", "value": p5Value, "rec": p5Rec});
 
-    // 6. GŁĘBOKOŚĆ OSADZENIA (ML Kit Profil 3D)
+    // ==========================================
+    // 6. GŁĘBOKOŚĆ OSADZENIA (ML Kit)
+    // ==========================================
     double browToCheekAverageX = (profileBrowRidge.dx + profileCheekbone.dx) / 2;
     double depthDelta = profileEyeCenter.dx - browToCheekAverageX;
-    String p6Value = "Normalnie osadzone"; String p6Rec = "Skręt dopasowany do reszty";
+    String p6Value = "Normalnie osadzone";
+    String p6Rec = "Norma (Brak korekty)";
+
     if (profileBrowRidge.dx > 0 && profileCheekbone.dx > 0) {
       if (depthDelta < -8.0) {
-        p6Value = "Głęboko osadzone"; p6Rec = "Okrągły, Lalka, Długie, Skręt B/C (M/L)"; vote(['Okrągły', 'Lalka']);
+        p6Value = "Głęboko osadzone";
+        p6Rec = "Styl: Okrągły, Lalka\nSkręt: B/C\nDługość: Długie rzęsy";
+        vote(['Okrągły', 'Lalka']);
       } else if (depthDelta > 8.0) {
-        p6Value = "Wypukłe"; p6Rec = "Lis, Naturalny, 9-10mm, Skręt B/C"; vote(['Lis', 'Naturalny']);
+        p6Value = "Wypukłe";
+        p6Rec = "Styl: Lis, Naturalny\nSkręt: C/B\nDługość: 9-10 mm";
+        vote(['Lis', 'Naturalny']);
       }
     }
     points.add({"title": "6. Głębokość osadzenia", "value": p6Value, "rec": p6Rec});
 
+    // ==========================================
     // 7. ROZMIAR OKA (Z wywiadu)
-    String p7Rec = "Dopasowanie do proporcji twarzy";
+    // ==========================================
+    String p7Rec = "Norma (Brak korekty)";
     if (surveyEyeSize == 'Małe') {
-      p7Rec = "Lalka, Wiewiórka, Skręt C/CC"; vote(['Lalka', 'Wiewiórka']);
+      p7Rec = "Styl: Lalka, Wiewiórka\nSkręt: C/CC";
+      vote(['Lalka', 'Wiewiórka']);
     } else if (surveyEyeSize == 'Duże') {
-      p7Rec = "Lis, Naturalny, Skręt B/C"; vote(['Lis', 'Naturalny']);
+      p7Rec = "Styl: Lis, Naturalny\nSkręt: B/C";
+      vote(['Lis', 'Naturalny']);
     }
     points.add({"title": "7. Rozmiar oka", "value": surveyEyeSize, "rec": p7Rec});
 

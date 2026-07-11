@@ -1317,7 +1317,13 @@ class _SalonHomeScreenState extends State<SalonHomeScreen> with SingleTickerProv
               ),
 
               Padding(
-                padding: const EdgeInsets.all(24.0),
+                // 🚀 NAPRAWA: Dynamiczny dolny margines chroniący przed systemowym paskiem (Home Indicator)
+                padding: EdgeInsets.only(
+                  left: 24.0,
+                  right: 24.0,
+                  top: 24.0,
+                  bottom: 24.0 + MediaQuery.of(context).padding.bottom,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
